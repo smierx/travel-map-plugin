@@ -1,0 +1,9 @@
+{
+    "id": "travel-map",
+    "name": "Travel Map",
+    "version": "0.1.0",
+    "minAppVersion": "1.4.0",
+    "description": "Visuelle Urlaubsplanung mit interaktiver Karte.",
+    "author": "Smierx",
+    "isDesktopOnly": false
+}
