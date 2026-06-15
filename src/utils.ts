@@ -1,5 +1,5 @@
 import { App, TFile, TFolder } from "obsidian";
-import { Place, Route, PRIORITAET_DEFAULT } from "./types";
+import { Place, Route, PRIORITY_DEFAULT, FrontmatterKeys, DEFAULT_FRONTMATTER_KEYS } from "./types";
 
 export function getVacations(app: App, rootFolder: string): TFolder[] {
     const root = app.vault.getAbstractFileByPath(rootFolder);
@@ -31,30 +31,38 @@ export function getFrontmatter(app: App, file: TFile): Record<string, unknown> |
     return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
 }
 
-export function getPlaces(app: App, files: TFile[]): Place[] {
+export function getPlaces(
+    app: App,
+    files: TFile[],
+    keys: FrontmatterKeys = DEFAULT_FRONTMATTER_KEYS,
+): Place[] {
     const places: Place[] = [];
     for (const file of files) {
         const fm = getFrontmatter(app, file);
-        if (!fm || fm["typ"] !== "ort") continue;
+        if (!fm || fm[keys.typeField] !== keys.placeValue) continue;
         const lat = fm["lat"];
         const lng = fm["lng"];
         if (typeof lat !== "number" || typeof lng !== "number") continue;
-        const raw = fm["priorität"];
-        const priorität = typeof raw === "number"
+        const raw = fm[keys.priorityField];
+        const priority = typeof raw === "number"
             ? Math.min(10, Math.max(1, Math.round(raw)))
-            : PRIORITAET_DEFAULT;
-        places.push({ file, lat, lng, kategorie: fm["kategorie"] as string | undefined, priorität });
+            : PRIORITY_DEFAULT;
+        places.push({ file, lat, lng, category: fm[keys.categoryField] as string | undefined, priority });
     }
     return places;
 }
 
-export function getRoutes(app: App, files: TFile[]): Route[] {
+export function getRoutes(
+    app: App,
+    files: TFile[],
+    keys: FrontmatterKeys = DEFAULT_FRONTMATTER_KEYS,
+): Route[] {
     const routes: Route[] = [];
     for (const file of files) {
         const fm = getFrontmatter(app, file);
-        if (!fm || fm["typ"] !== "route") continue;
-        const orte = Array.isArray(fm["orte"]) ? (fm["orte"] as string[]) : [];
-        routes.push({ file, farbe: (fm["farbe"] as string) ?? "#3388ff", orte });
+        if (!fm || fm[keys.typeField] !== keys.routeValue) continue;
+        const locations = Array.isArray(fm[keys.locationsField]) ? (fm[keys.locationsField] as string[]) : [];
+        routes.push({ file, color: (fm[keys.colorField] as string) ?? "#3388ff", locations });
     }
     return routes;
 }

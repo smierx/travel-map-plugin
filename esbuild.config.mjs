@@ -3,10 +3,26 @@ import process from "process";
 import builtins from "builtin-modules";
 import { copyFileSync, mkdirSync } from "fs";
 
-const VAULT_PLUGIN_DIR =
-    "/Users/smierx/Desktop/Smierx/.obsidian/plugins/travel-map";
+const VAULT_PLUGIN_DIR = process.env.OBSIDIAN_PLUGIN_DIR ?? "";
 
 const prod = process.argv[2] === "production";
+
+const plugins = [];
+
+if (VAULT_PLUGIN_DIR) {
+    plugins.push({
+        name: "copy-to-vault",
+        setup(build) {
+            build.onEnd(() => {
+                mkdirSync(VAULT_PLUGIN_DIR, { recursive: true });
+                copyFileSync("main.js", `${VAULT_PLUGIN_DIR}/main.js`);
+                copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
+                copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
+                console.log(`→ Copied to ${VAULT_PLUGIN_DIR}`);
+            });
+        },
+    });
+}
 
 const context = await esbuild.context({
     entryPoints: ["main.ts"],
@@ -33,20 +49,7 @@ const context = await esbuild.context({
     sourcemap: prod ? false : "inline",
     treeShaking: true,
     outfile: "main.js",
-    plugins: [
-        {
-            name: "copy-to-vault",
-            setup(build) {
-                build.onEnd(() => {
-                    mkdirSync(VAULT_PLUGIN_DIR, { recursive: true });
-                    copyFileSync("main.js", `${VAULT_PLUGIN_DIR}/main.js`);
-                    copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
-                    copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
-                    console.log(`→ Kopiert nach ${VAULT_PLUGIN_DIR}`);
-                });
-            },
-        },
-    ],
+    plugins,
 });
 
 if (prod) {

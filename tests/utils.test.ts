@@ -7,63 +7,63 @@ import {
     getVacationFiles,
     getVacations,
 } from "../src/utils";
-import { prioritaetFarbe, prioritaetGroesse } from "../src/types";
+import { priorityColor, prioritySize } from "../src/types";
 import { makeFile, makeFolder, makeApp } from "./helpers";
 import type { App } from "obsidian";
 
-// ── prioritaetFarbe / prioritaetGroesse ───────────────────────────────────────
+// ── priorityColor / prioritySize ───────────────────────────────────────────────
 
-describe("prioritaetFarbe", () => {
-    it("gibt grau für 1–2 zurück", () => {
-        expect(prioritaetFarbe(1)).toBe("#95a5a6");
-        expect(prioritaetFarbe(2)).toBe("#95a5a6");
+describe("priorityColor", () => {
+    it("returns grey for 1–2", () => {
+        expect(priorityColor(1)).toBe("#95a5a6");
+        expect(priorityColor(2)).toBe("#95a5a6");
     });
-    it("gibt blau für 3–4 zurück", () => {
-        expect(prioritaetFarbe(3)).toBe("#3498db");
-        expect(prioritaetFarbe(4)).toBe("#3498db");
+    it("returns blue for 3–4", () => {
+        expect(priorityColor(3)).toBe("#3498db");
+        expect(priorityColor(4)).toBe("#3498db");
     });
-    it("gibt grün für 5–6 zurück", () => {
-        expect(prioritaetFarbe(5)).toBe("#2ecc71");
-        expect(prioritaetFarbe(6)).toBe("#2ecc71");
+    it("returns green for 5–6", () => {
+        expect(priorityColor(5)).toBe("#2ecc71");
+        expect(priorityColor(6)).toBe("#2ecc71");
     });
-    it("gibt orange für 7–8 zurück", () => {
-        expect(prioritaetFarbe(7)).toBe("#f39c12");
-        expect(prioritaetFarbe(8)).toBe("#f39c12");
+    it("returns orange for 7–8", () => {
+        expect(priorityColor(7)).toBe("#f39c12");
+        expect(priorityColor(8)).toBe("#f39c12");
     });
-    it("gibt rot für 9–10 zurück", () => {
-        expect(prioritaetFarbe(9)).toBe("#e74c3c");
-        expect(prioritaetFarbe(10)).toBe("#e74c3c");
+    it("returns red for 9–10", () => {
+        expect(priorityColor(9)).toBe("#e74c3c");
+        expect(priorityColor(10)).toBe("#e74c3c");
     });
 });
 
-describe("prioritaetGroesse", () => {
-    it("wächst mit der Priorität", () => {
-        const sizes = [1, 3, 5, 7, 9].map(prioritaetGroesse);
+describe("prioritySize", () => {
+    it("grows with priority", () => {
+        const sizes = [1, 3, 5, 7, 9].map(prioritySize);
         for (let i = 0; i < sizes.length - 1; i++) {
             expect(sizes[i]).toBeLessThan(sizes[i + 1]);
         }
     });
-    it("gibt 18 für Priorität 10 zurück", () => {
-        expect(prioritaetGroesse(10)).toBe(18);
+    it("returns 18 for priority 10", () => {
+        expect(prioritySize(10)).toBe(18);
     });
 });
 
 // ── parseWikilink ─────────────────────────────────────────────────────────────
 
 describe("parseWikilink", () => {
-    it("parst einfachen Wikilink", () => {
+    it("parses a simple wikilink", () => {
         expect(parseWikilink("[[Split]]")).toBe("Split");
     });
 
-    it("parst Wikilink mit Alias", () => {
-        expect(parseWikilink("[[Split|Altstadt von Split]]")).toBe("Split");
+    it("parses a wikilink with alias", () => {
+        expect(parseWikilink("[[Split|Old Town of Split]]")).toBe("Split");
     });
 
-    it("trimmt Leerzeichen im Namen", () => {
+    it("trims whitespace in the name", () => {
         expect(parseWikilink("[[  Split  ]]")).toBe("Split");
     });
 
-    it("gibt leeren String für leeren Link zurück", () => {
+    it("returns empty string for empty link", () => {
         expect(parseWikilink("[[]]")).toBe("");
     });
 });
@@ -71,39 +71,39 @@ describe("parseWikilink", () => {
 // ── resolveRouteCoords ────────────────────────────────────────────────────────
 
 describe("resolveRouteCoords", () => {
-    it("löst Wikilinks zu Koordinaten auf", () => {
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const dubrovnik = makeFile("Reisen/Kroatien/Dubrovnik.md");
+    it("resolves wikilinks to coordinates", () => {
+        const split = makeFile("Trips/Croatia/Split.md");
+        const dubrovnik = makeFile("Trips/Croatia/Dubrovnik.md");
         const places = [
-            { file: split, lat: 43.5081, lng: 16.4402, priorität: 5 },
-            { file: dubrovnik, lat: 42.6507, lng: 18.0944, priorität: 5 },
+            { file: split, lat: 43.5081, lng: 16.4402, priority: 5 },
+            { file: dubrovnik, lat: 42.6507, lng: 18.0944, priority: 5 },
         ];
 
         const coords = resolveRouteCoords(places, ["[[Split]]", "[[Dubrovnik]]"]);
         expect(coords).toEqual([[43.5081, 16.4402], [42.6507, 18.0944]]);
     });
 
-    it("überspringt nicht auflösbare Wikilinks", () => {
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const places = [{ file: split, lat: 43.5, lng: 16.4, priorität: 5 }];
+    it("skips unresolvable wikilinks", () => {
+        const split = makeFile("Trips/Croatia/Split.md");
+        const places = [{ file: split, lat: 43.5, lng: 16.4, priority: 5 }];
 
-        const coords = resolveRouteCoords(places, ["[[Split]]", "[[NichtExistent]]"]);
+        const coords = resolveRouteCoords(places, ["[[Split]]", "[[DoesNotExist]]"]);
         expect(coords).toEqual([[43.5, 16.4]]);
     });
 
-    it("löst Wikilinks mit Alias korrekt auf", () => {
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const places = [{ file: split, lat: 43.5, lng: 16.4, priorität: 5 }];
+    it("resolves wikilinks with alias correctly", () => {
+        const split = makeFile("Trips/Croatia/Split.md");
+        const places = [{ file: split, lat: 43.5, lng: 16.4, priority: 5 }];
 
-        const coords = resolveRouteCoords(places, ["[[Split|Altstadt]]"]);
+        const coords = resolveRouteCoords(places, ["[[Split|Old Town]]"]);
         expect(coords).toEqual([[43.5, 16.4]]);
     });
 
-    it("gibt leeres Array bei leerer Wikilink-Liste zurück", () => {
+    it("returns empty array for empty wikilink list", () => {
         expect(resolveRouteCoords([], [])).toEqual([]);
     });
 
-    it("gibt leeres Array wenn keine Places vorhanden", () => {
+    it("returns empty array when no places available", () => {
         const coords = resolveRouteCoords([], ["[[Split]]"]);
         expect(coords).toEqual([]);
     });
@@ -112,175 +112,175 @@ describe("resolveRouteCoords", () => {
 // ── getPlaces ─────────────────────────────────────────────────────────────────
 
 describe("getPlaces", () => {
-    it("gibt Place zurück wenn typ=ort und Koordinaten vorhanden", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("returns a Place when type=place and coordinates are present", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5081, lng: 16.4402, kategorie: "stadt" }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5081, lng: 16.4402, category: "city" }]]),
         }) as App;
 
         const places = getPlaces(app, [file]);
         expect(places).toHaveLength(1);
         expect(places[0].lat).toBe(43.5081);
         expect(places[0].lng).toBe(16.4402);
-        expect(places[0].kategorie).toBe("stadt");
+        expect(places[0].category).toBe("city");
         expect(places[0].file).toBe(file);
     });
 
-    it("schließt Dateien ohne typ=ort aus", () => {
-        const file = makeFile("Reisen/Kroatien/Route.md");
+    it("excludes files without type=place", () => {
+        const file = makeFile("Trips/Croatia/Route.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "route", farbe: "#f00" }]]),
+            frontmatters: new Map([[file.path, { type: "route", color: "#f00" }]]),
         }) as App;
 
         expect(getPlaces(app, [file])).toHaveLength(0);
     });
 
-    it("schließt Dateien ohne Koordinaten aus", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("excludes files without coordinates", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort" }]]),
+            frontmatters: new Map([[file.path, { type: "place" }]]),
         }) as App;
 
         expect(getPlaces(app, [file])).toHaveLength(0);
     });
 
-    it("schließt Dateien mit String-Koordinaten aus", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("excludes files with string coordinates", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: "43.5", lng: "16.4" }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: "43.5", lng: "16.4" }]]),
         }) as App;
 
         expect(getPlaces(app, [file])).toHaveLength(0);
     });
 
-    it("schließt Dateien ohne Frontmatter aus", () => {
-        const file = makeFile("Reisen/Kroatien/Notiz.md");
+    it("excludes files without frontmatter", () => {
+        const file = makeFile("Trips/Croatia/Note.md");
         const app = makeApp({ frontmatters: new Map() }) as App;
 
         expect(getPlaces(app, [file])).toHaveLength(0);
     });
 
-    it("gibt mehrere Places zurück", () => {
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const dubrovnik = makeFile("Reisen/Kroatien/Dubrovnik.md");
+    it("returns multiple places", () => {
+        const split = makeFile("Trips/Croatia/Split.md");
+        const dubrovnik = makeFile("Trips/Croatia/Dubrovnik.md");
         const app = makeApp({
             frontmatters: new Map([
-                [split.path, { typ: "ort", lat: 43.5, lng: 16.4 }],
-                [dubrovnik.path, { typ: "ort", lat: 42.6, lng: 18.1 }],
+                [split.path, { type: "place", lat: 43.5, lng: 16.4 }],
+                [dubrovnik.path, { type: "place", lat: 42.6, lng: 18.1 }],
             ]),
         }) as App;
 
         expect(getPlaces(app, [split, dubrovnik])).toHaveLength(2);
     });
 
-    it("setzt kategorie auf undefined wenn nicht angegeben", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("sets category to undefined when not provided", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4 }]]),
         }) as App;
 
         const places = getPlaces(app, [file]);
-        expect(places[0].kategorie).toBeUndefined();
+        expect(places[0].category).toBeUndefined();
     });
 
-    it("setzt priorität auf 5 wenn nicht angegeben", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("defaults priority to 5 when not provided", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4 }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(5);
+        expect(getPlaces(app, [file])[0].priority).toBe(5);
     });
 
-    it("liest priorität korrekt aus", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("reads priority correctly", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4, priorität: 9 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, priority: 9 }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(9);
+        expect(getPlaces(app, [file])[0].priority).toBe(9);
     });
 
-    it("klemmt priorität auf Minimum 1", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("clamps priority to minimum 1", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4, priorität: -5 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, priority: -5 }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(1);
+        expect(getPlaces(app, [file])[0].priority).toBe(1);
     });
 
-    it("klemmt priorität auf Maximum 10", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("clamps priority to maximum 10", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4, priorität: 99 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, priority: 99 }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(10);
+        expect(getPlaces(app, [file])[0].priority).toBe(10);
     });
 
-    it("rundet Dezimal-priorität", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("rounds decimal priority", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4, priorität: 7.6 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, priority: 7.6 }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(8);
+        expect(getPlaces(app, [file])[0].priority).toBe(8);
     });
 
-    it("ignoriert String-priorität und nutzt Default", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("ignores string priority and uses default", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4, priorität: "hoch" }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, priority: "high" }]]),
         }) as App;
 
-        expect(getPlaces(app, [file])[0].priorität).toBe(5);
+        expect(getPlaces(app, [file])[0].priority).toBe(5);
     });
 });
 
 // ── getRoutes ─────────────────────────────────────────────────────────────────
 
 describe("getRoutes", () => {
-    it("gibt Route zurück wenn typ=route", () => {
-        const file = makeFile("Reisen/Kroatien/Route Küste.md");
+    it("returns a Route when type=route", () => {
+        const file = makeFile("Trips/Croatia/Coastal Route.md");
         const app = makeApp({
             frontmatters: new Map([[
                 file.path,
-                { typ: "route", farbe: "#e74c3c", orte: ["[[Split]]", "[[Dubrovnik]]"] },
+                { type: "route", color: "#e74c3c", locations: ["[[Split]]", "[[Dubrovnik]]"] },
             ]]),
         }) as App;
 
         const routes = getRoutes(app, [file]);
         expect(routes).toHaveLength(1);
-        expect(routes[0].farbe).toBe("#e74c3c");
-        expect(routes[0].orte).toEqual(["[[Split]]", "[[Dubrovnik]]"]);
+        expect(routes[0].color).toBe("#e74c3c");
+        expect(routes[0].locations).toEqual(["[[Split]]", "[[Dubrovnik]]"]);
         expect(routes[0].file).toBe(file);
     });
 
-    it("verwendet Standardfarbe wenn farbe fehlt", () => {
-        const file = makeFile("Reisen/Kroatien/Route.md");
+    it("uses default color when color is missing", () => {
+        const file = makeFile("Trips/Croatia/Route.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "route", orte: [] }]]),
+            frontmatters: new Map([[file.path, { type: "route", locations: [] }]]),
         }) as App;
 
         const routes = getRoutes(app, [file]);
-        expect(routes[0].farbe).toBe("#3388ff");
+        expect(routes[0].color).toBe("#3388ff");
     });
 
-    it("gibt leere orte-Liste zurück wenn orte fehlt", () => {
-        const file = makeFile("Reisen/Kroatien/Route.md");
+    it("returns empty locations list when locations is missing", () => {
+        const file = makeFile("Trips/Croatia/Route.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "route" }]]),
+            frontmatters: new Map([[file.path, { type: "route" }]]),
         }) as App;
 
         const routes = getRoutes(app, [file]);
-        expect(routes[0].orte).toEqual([]);
+        expect(routes[0].locations).toEqual([]);
     });
 
-    it("schließt Dateien ohne typ=route aus", () => {
-        const file = makeFile("Reisen/Kroatien/Split.md");
+    it("excludes files without type=route", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
         const app = makeApp({
-            frontmatters: new Map([[file.path, { typ: "ort", lat: 43.5, lng: 16.4 }]]),
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4 }]]),
         }) as App;
 
         expect(getRoutes(app, [file])).toHaveLength(0);
@@ -290,100 +290,100 @@ describe("getRoutes", () => {
 // ── getVacationFiles ──────────────────────────────────────────────────────────
 
 describe("getVacationFiles", () => {
-    it("gibt alle Markdown-Dateien im Ordner zurück", () => {
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const dubrovnik = makeFile("Reisen/Kroatien/Dubrovnik.md");
-        const folder = makeFolder("Reisen/Kroatien", [split, dubrovnik]);
-        const app = makeApp({ files: new Map([["Reisen/Kroatien", folder]]) }) as App;
+    it("returns all markdown files in a folder", () => {
+        const split = makeFile("Trips/Croatia/Split.md");
+        const dubrovnik = makeFile("Trips/Croatia/Dubrovnik.md");
+        const folder = makeFolder("Trips/Croatia", [split, dubrovnik]);
+        const app = makeApp({ files: new Map([["Trips/Croatia", folder]]) }) as App;
 
-        const files = getVacationFiles(app, "Reisen/Kroatien");
+        const files = getVacationFiles(app, "Trips/Croatia");
         expect(files).toHaveLength(2);
     });
 
-    it("findet Dateien in Unterordnern rekursiv", () => {
-        const hvar = makeFile("Reisen/Kroatien/Inseln/Hvar.md");
-        const subfolder = makeFolder("Reisen/Kroatien/Inseln", [hvar]);
-        const split = makeFile("Reisen/Kroatien/Split.md");
-        const folder = makeFolder("Reisen/Kroatien", [split, subfolder]);
-        const app = makeApp({ files: new Map([["Reisen/Kroatien", folder]]) }) as App;
+    it("finds files in subfolders recursively", () => {
+        const hvar = makeFile("Trips/Croatia/Islands/Hvar.md");
+        const subfolder = makeFolder("Trips/Croatia/Islands", [hvar]);
+        const split = makeFile("Trips/Croatia/Split.md");
+        const folder = makeFolder("Trips/Croatia", [split, subfolder]);
+        const app = makeApp({ files: new Map([["Trips/Croatia", folder]]) }) as App;
 
-        const files = getVacationFiles(app, "Reisen/Kroatien");
+        const files = getVacationFiles(app, "Trips/Croatia");
         expect(files).toHaveLength(2);
         expect(files.map(f => f.basename)).toContain("Split");
         expect(files.map(f => f.basename)).toContain("Hvar");
     });
 
-    it("schließt Nicht-Markdown-Dateien aus", () => {
-        const md = makeFile("Reisen/Kroatien/Split.md");
-        const img = makeFile("Reisen/Kroatien/foto.jpg");
+    it("excludes non-markdown files", () => {
+        const md = makeFile("Trips/Croatia/Split.md");
+        const img = makeFile("Trips/Croatia/photo.jpg");
         img.extension = "jpg";
-        const folder = makeFolder("Reisen/Kroatien", [md, img]);
-        const app = makeApp({ files: new Map([["Reisen/Kroatien", folder]]) }) as App;
+        const folder = makeFolder("Trips/Croatia", [md, img]);
+        const app = makeApp({ files: new Map([["Trips/Croatia", folder]]) }) as App;
 
-        const files = getVacationFiles(app, "Reisen/Kroatien");
+        const files = getVacationFiles(app, "Trips/Croatia");
         expect(files).toHaveLength(1);
         expect(files[0].basename).toBe("Split");
     });
 
-    it("gibt leeres Array bei nicht vorhandenem Pfad zurück", () => {
+    it("returns empty array for non-existent path", () => {
         const app = makeApp({ files: new Map() }) as App;
-        expect(getVacationFiles(app, "Reisen/NichtExistent")).toHaveLength(0);
+        expect(getVacationFiles(app, "Trips/DoesNotExist")).toHaveLength(0);
     });
 
-    it("gibt leeres Array für leeren Ordner zurück", () => {
-        const folder = makeFolder("Reisen/Kroatien", []);
-        const app = makeApp({ files: new Map([["Reisen/Kroatien", folder]]) }) as App;
+    it("returns empty array for empty folder", () => {
+        const folder = makeFolder("Trips/Croatia", []);
+        const app = makeApp({ files: new Map([["Trips/Croatia", folder]]) }) as App;
 
-        expect(getVacationFiles(app, "Reisen/Kroatien")).toHaveLength(0);
+        expect(getVacationFiles(app, "Trips/Croatia")).toHaveLength(0);
     });
 });
 
 // ── getVacations ──────────────────────────────────────────────────────────────
 
 describe("getVacations", () => {
-    it("gibt direkte Unterordner als Urlaube zurück", () => {
-        const kroatien = makeFolder("Reisen/Kroatien");
-        const portugal = makeFolder("Reisen/Portugal");
-        const root = makeFolder("Reisen", [kroatien, portugal]);
-        const app = makeApp({ files: new Map([["Reisen", root]]) }) as App;
+    it("returns direct subfolders as trips", () => {
+        const croatia = makeFolder("Trips/Croatia");
+        const portugal = makeFolder("Trips/Portugal");
+        const root = makeFolder("Trips", [croatia, portugal]);
+        const app = makeApp({ files: new Map([["Trips", root]]) }) as App;
 
-        const vacations = getVacations(app, "Reisen");
+        const vacations = getVacations(app, "Trips");
         expect(vacations).toHaveLength(2);
-        expect(vacations.map(v => v.name)).toContain("Kroatien");
+        expect(vacations.map(v => v.name)).toContain("Croatia");
         expect(vacations.map(v => v.name)).toContain("Portugal");
     });
 
-    it("schließt Dateien im Root-Ordner aus", () => {
-        const readme = makeFile("Reisen/README.md");
-        const kroatien = makeFolder("Reisen/Kroatien");
-        const root = makeFolder("Reisen", [readme, kroatien]);
-        const app = makeApp({ files: new Map([["Reisen", root]]) }) as App;
+    it("excludes files in the root folder", () => {
+        const readme = makeFile("Trips/README.md");
+        const croatia = makeFolder("Trips/Croatia");
+        const root = makeFolder("Trips", [readme, croatia]);
+        const app = makeApp({ files: new Map([["Trips", root]]) }) as App;
 
-        const vacations = getVacations(app, "Reisen");
+        const vacations = getVacations(app, "Trips");
         expect(vacations).toHaveLength(1);
-        expect(vacations[0].name).toBe("Kroatien");
+        expect(vacations[0].name).toBe("Croatia");
     });
 
-    it("sortiert Urlaube alphabetisch", () => {
-        const z = makeFolder("Reisen/Zypern");
-        const a = makeFolder("Reisen/Albanien");
-        const m = makeFolder("Reisen/Montenegro");
-        const root = makeFolder("Reisen", [z, a, m]);
-        const app = makeApp({ files: new Map([["Reisen", root]]) }) as App;
+    it("sorts trips alphabetically", () => {
+        const z = makeFolder("Trips/Cyprus");
+        const a = makeFolder("Trips/Albania");
+        const m = makeFolder("Trips/Montenegro");
+        const root = makeFolder("Trips", [z, a, m]);
+        const app = makeApp({ files: new Map([["Trips", root]]) }) as App;
 
-        const vacations = getVacations(app, "Reisen");
-        expect(vacations.map(v => v.name)).toEqual(["Albanien", "Montenegro", "Zypern"]);
+        const vacations = getVacations(app, "Trips");
+        expect(vacations.map(v => v.name)).toEqual(["Albania", "Cyprus", "Montenegro"]);
     });
 
-    it("gibt leeres Array zurück wenn Root-Ordner nicht existiert", () => {
+    it("returns empty array when root folder does not exist", () => {
         const app = makeApp({ files: new Map() }) as App;
-        expect(getVacations(app, "NichtExistent")).toHaveLength(0);
+        expect(getVacations(app, "DoesNotExist")).toHaveLength(0);
     });
 
-    it("gibt leeres Array zurück für leeren Root-Ordner", () => {
-        const root = makeFolder("Reisen", []);
-        const app = makeApp({ files: new Map([["Reisen", root]]) }) as App;
+    it("returns empty array for empty root folder", () => {
+        const root = makeFolder("Trips", []);
+        const app = makeApp({ files: new Map([["Trips", root]]) }) as App;
 
-        expect(getVacations(app, "Reisen")).toHaveLength(0);
+        expect(getVacations(app, "Trips")).toHaveLength(0);
     });
 });

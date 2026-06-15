@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import * as L from "leaflet";
 import TravelMapPlugin from "../main";
-import { Place, Route, prioritaetFarbe, prioritaetGroesse, PRIORITAET_LEGENDE } from "./types";
+import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend } from "./types";
 import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords } from "./utils";
 
 export const TRAVEL_MAP_VIEW_TYPE = "travel-map";
@@ -74,7 +74,7 @@ export class MapView extends ItemView {
         const vacations = getVacations(this.app, this.plugin.settings.rootFolder);
 
         const select = parent.createEl("select", { cls: "tm-vacation-select" });
-        const emptyOpt = select.createEl("option", { text: "Urlaub wählen …" });
+        const emptyOpt = select.createEl("option", { text: "Select trip…" });
         emptyOpt.value = "";
 
         for (const v of vacations) {
@@ -91,7 +91,7 @@ export class MapView extends ItemView {
         });
 
         const refreshBtn = parent.createEl("button", { cls: "tm-refresh-btn", text: "⟳" });
-        refreshBtn.title = "Urlaubsliste aktualisieren";
+        refreshBtn.title = "Refresh trip list";
         refreshBtn.addEventListener("click", () => this.buildUI());
     }
 
@@ -108,21 +108,22 @@ export class MapView extends ItemView {
         }).addTo(map);
 
         this.markerLayer = L.layerGroup().addTo(map);
-        this.addLegendControl(map);
+        this.addLegendControl(map, this.plugin.settings.colors);
         this.addRouteControl(map);
         this.leafletMap = map;
 
         this.refreshMap();
     }
 
-    private addLegendControl(map: L.Map) {
+    private addLegendControl(map: L.Map, colors: PriorityColors) {
+        const legend = buildLegend(colors);
         const Legend = L.Control.extend({
             onAdd() {
                 const div = L.DomUtil.create("div", "tm-legend");
-                for (const { label, farbe } of PRIORITAET_LEGENDE) {
+                for (const { label, color } of legend) {
                     const row = L.DomUtil.create("div", "tm-legend-row", div);
                     const dot = L.DomUtil.create("span", "tm-legend-dot", row);
-                    dot.style.background = farbe;
+                    dot.style.background = color;
                     L.DomUtil.create("span", "", row).textContent = label;
                 }
                 return div;
@@ -156,9 +157,10 @@ export class MapView extends ItemView {
             return;
         }
 
+        const { keys } = this.plugin.settings;
         const files = getVacationFiles(this.app, this.activeVacation);
-        const places = getPlaces(this.app, files);
-        const routes = getRoutes(this.app, files);
+        const places = getPlaces(this.app, files, keys);
+        const routes = getRoutes(this.app, files, keys);
 
         const bounds: [number, number][] = [];
 
@@ -183,8 +185,8 @@ export class MapView extends ItemView {
     private addMarker(place: Place) {
         if (!this.markerLayer || !this.leafletMap) return;
 
-        const farbe = prioritaetFarbe(place.priorität);
-        const size = prioritaetGroesse(place.priorität);
+        const farbe = priorityColor(place.priority, this.plugin.settings.colors);
+        const size = prioritySize(place.priority);
         const half = size / 2;
 
         const icon = L.divIcon({
@@ -209,15 +211,15 @@ export class MapView extends ItemView {
         dot.style.background = farbe;
         metaEl.appendChild(dot);
         const metaText = document.createElement("span");
-        const parts: string[] = [`Priorität ${place.priorität}`];
-        if (place.kategorie) parts.push(place.kategorie);
+        const parts: string[] = [`Priority ${place.priority}`];
+        if (place.category) parts.push(place.category);
         metaText.textContent = parts.join(" · ");
         metaEl.appendChild(metaText);
         popupDiv.appendChild(metaEl);
 
         const openBtn = document.createElement("button");
         openBtn.className = "tm-popup-open";
-        openBtn.textContent = "Notiz öffnen";
+        openBtn.textContent = "Open note";
         openBtn.onclick = () => this.app.workspace.getLeaf().openFile(place.file);
         popupDiv.appendChild(openBtn);
 
@@ -229,11 +231,11 @@ export class MapView extends ItemView {
     private addRoute(route: Route, places: Place[]) {
         if (!this.leafletMap) return;
 
-        const coords = resolveRouteCoords(places, route.orte);
+        const coords = resolveRouteCoords(places, route.locations);
         if (coords.length < 2) return;
 
         const line = L.polyline(coords, {
-            color: route.farbe,
+            color: route.color,
             weight: 3,
             opacity: 0.8,
         }).addTo(this.leafletMap);
@@ -249,7 +251,7 @@ export class MapView extends ItemView {
 
         const header = document.createElement("div");
         header.className = "tm-rc-header";
-        header.textContent = "Routen";
+        header.textContent = "Routes";
         this.routeControlEl.appendChild(header);
 
         for (const [name, entry] of this.routeLayers) {
@@ -269,7 +271,7 @@ export class MapView extends ItemView {
 
             const colorDot = document.createElement("span");
             colorDot.className = "tm-rc-dot";
-            colorDot.style.background = (entry.line.options as L.PolylineOptions).color ?? "#3388ff";
+            colorDot.style.background = (entry.line.options as L.PolylineOptions).color as string ?? "#3388ff";
 
             const nameEl = document.createElement("span");
             nameEl.textContent = name;

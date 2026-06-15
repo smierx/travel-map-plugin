@@ -15,7 +15,7 @@ export default class TravelMapPlugin extends Plugin {
 
         this.addCommand({
             id: "open",
-            name: "Karte öffnen",
+            name: "Open map",
             callback: () => this.activateView(),
         });
 
@@ -27,7 +27,13 @@ export default class TravelMapPlugin extends Plugin {
     }
 
     async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        const saved = await this.loadData();
+        this.settings = {
+            ...DEFAULT_SETTINGS,
+            ...saved,
+            keys: { ...DEFAULT_SETTINGS.keys, ...(saved?.keys ?? {}) },
+            colors: { ...DEFAULT_SETTINGS.colors, ...(saved?.colors ?? {}) },
+        };
     }
 
     async saveSettings() {
