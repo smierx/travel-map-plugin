@@ -47,7 +47,9 @@ export function getPlaces(
         const priority = typeof raw === "number"
             ? Math.min(10, Math.max(1, Math.round(raw)))
             : PRIORITY_DEFAULT;
-        places.push({ file, lat, lng, category: fm[keys.categoryField] as string | undefined, priority });
+        const rawDay = fm[keys.dayField];
+        const day = typeof rawDay === "number" ? Math.round(rawDay) : undefined;
+        places.push({ file, lat, lng, category: fm[keys.categoryField] as string | undefined, priority, day });
     }
     return places;
 }
@@ -113,6 +115,15 @@ export function getCategories(places: Place[]): string[] {
         if (p.category) set.add(p.category);
     }
     return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// Distinkte, aufsteigend sortierte Tage aller Orte (für die Tagesplanung).
+export function getDays(places: Place[]): number[] {
+    const set = new Set<number>();
+    for (const p of places) {
+        if (typeof p.day === "number") set.add(p.day);
+    }
+    return [...set].sort((a, b) => a - b);
 }
 
 export interface NewPlaceOptions {

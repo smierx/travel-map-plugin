@@ -6,6 +6,7 @@ export interface Place {
     lng: number;
     category?: string;
     priority: number;
+    day?: number;
 }
 
 export interface Route {
@@ -22,6 +23,7 @@ export interface FrontmatterKeys {
     priorityField: string;
     colorField: string;
     locationsField: string;
+    dayField: string;
 }
 
 export interface PriorityColors {
@@ -39,6 +41,7 @@ export interface TravelMapSettings {
     colors: PriorityColors;
     openNewPlace: boolean;
     categoryIcons: Record<string, string>;
+    realRouting: boolean;
 }
 
 export const DEFAULT_FRONTMATTER_KEYS: FrontmatterKeys = {
@@ -49,6 +52,7 @@ export const DEFAULT_FRONTMATTER_KEYS: FrontmatterKeys = {
     priorityField: "priority",
     colorField: "color",
     locationsField: "locations",
+    dayField: "day",
 };
 
 export const DEFAULT_PRIORITY_COLORS: PriorityColors = {
@@ -90,6 +94,7 @@ export const DEFAULT_SETTINGS: TravelMapSettings = {
     colors: { ...DEFAULT_PRIORITY_COLORS },
     openNewPlace: true,
     categoryIcons: { ...DEFAULT_CATEGORY_ICONS },
+    realRouting: false,
 };
 
 export const PRIORITY_DEFAULT = 5;

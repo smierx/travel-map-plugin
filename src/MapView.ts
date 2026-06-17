@@ -2,15 +2,18 @@ import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import * as L from "leaflet";
 import TravelMapPlugin from "../main";
 import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend, categoryIcon } from "./types";
-import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, roundCoord, buildPlaceFileContent, routeDistanceKm, formatDistance, sortPlacesByPriority } from "./utils";
+import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, getDays, roundCoord, buildPlaceFileContent, routeDistanceKm, formatDistance, sortPlacesByPriority } from "./utils";
 import { CreatePlaceModal } from "./CreatePlaceModal";
+import { fetchRoute, routeSignature } from "./routing";
 
 export const TRAVEL_MAP_VIEW_TYPE = "travel-map";
 
 const UNCATEGORIZED = "(no category)";
+const NODAY = "(no day)";
 
 interface RouteEntry {
     group: L.LayerGroup;
+    line: L.Polyline;
     visible: boolean;
     color: string;
     distanceKm: number;
@@ -21,14 +24,17 @@ export class MapView extends ItemView {
     private leafletMap: L.Map | null = null;
     private markerLayer: L.LayerGroup | null = null;
     private routeLayers: Map<string, RouteEntry> = new Map();
+    private routeCache: Map<string, [number, number][]> = new Map();
     private markers: Map<string, L.Marker> = new Map();
     private places: Place[] = [];
     private routes: Route[] = [];
     private activeCategories: Set<string> = new Set();
+    private activeDays: Set<string> = new Set();
     private activeVacation: string = "";
     private mapEl: HTMLElement | null = null;
     private routeControlEl: HTMLElement | null = null;
     private categoryControlEl: HTMLElement | null = null;
+    private dayControlEl: HTMLElement | null = null;
     private placeListEl: HTMLElement | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: TravelMapPlugin) {
@@ -56,9 +62,11 @@ export class MapView extends ItemView {
         this.mapEl = null;
         this.routeControlEl = null;
         this.categoryControlEl = null;
+        this.dayControlEl = null;
         this.placeListEl = null;
         this.markerLayer = null;
         this.routeLayers.clear();
+        this.routeCache.clear();
         this.markers.clear();
     }
 
@@ -124,6 +132,7 @@ export class MapView extends ItemView {
         this.markerLayer = L.layerGroup().addTo(map);
         this.addLegendControl(map, this.plugin.settings.colors);
         this.addPlaceListControl(map);
+        this.addDayControl(map);
         this.addCategoryControl(map);
         this.addRouteControl(map);
         this.leafletMap = map;
@@ -219,6 +228,23 @@ export class MapView extends ItemView {
         new CategoryControl({ position: "topright" }).addTo(map);
     }
 
+    private addDayControl(map: L.Map) {
+        const self = this;
+        const DayControl = L.Control.extend({
+            onAdd() {
+                const div = L.DomUtil.create("div", "tm-day-control leaflet-bar");
+                L.DomEvent.disableClickPropagation(div);
+                self.dayControlEl = div;
+                return div;
+            },
+        });
+        new DayControl({ position: "topright" }).addTo(map);
+    }
+
+    private dayKey(p: Place): string {
+        return typeof p.day === "number" ? `Day ${p.day}` : NODAY;
+    }
+
     // ── Daten laden ────────────────────────────────────────────────────────────
 
     private refreshMap() {
@@ -233,6 +259,7 @@ export class MapView extends ItemView {
             this.markerLayer.clearLayers();
             this.markers.clear();
             this.renderCategoryControl();
+            this.renderDayControl();
             this.renderRouteControl();
             this.renderPlaceList();
             return;
@@ -243,15 +270,10 @@ export class MapView extends ItemView {
         this.places = getPlaces(this.app, files, keys);
         this.routes = getRoutes(this.app, files, keys);
 
-        // Kategorien-State mit den real vorhandenen Kategorien synchronisieren.
-        // Neue Kategorien sind per Default sichtbar.
-        const present = new Set(this.places.map(p => p.category ?? UNCATEGORIZED));
-        for (const c of present) {
-            if (!this.activeCategories.has(c)) this.activeCategories.add(c);
-        }
-        for (const c of [...this.activeCategories]) {
-            if (!present.has(c)) this.activeCategories.delete(c);
-        }
+        // Filter-State mit den real vorhandenen Werten abgleichen.
+        // Neue Werte sind per Default sichtbar, verschwundene werden entfernt.
+        this.syncFilter(new Set(this.places.map(p => p.category ?? UNCATEGORIZED)), this.activeCategories);
+        this.syncFilter(new Set(this.places.map(p => this.dayKey(p))), this.activeDays);
 
         this.renderMarkers();
         this.fitToPlaces();
@@ -261,8 +283,19 @@ export class MapView extends ItemView {
         }
 
         this.renderCategoryControl();
+        this.renderDayControl();
         this.renderRouteControl();
         this.renderPlaceList();
+    }
+
+    // Aktive Filtermenge an die tatsächlich vorhandenen Werte angleichen.
+    private syncFilter(present: Set<string>, active: Set<string>) {
+        for (const v of present) {
+            if (!active.has(v)) active.add(v);
+        }
+        for (const v of [...active]) {
+            if (!present.has(v)) active.delete(v);
+        }
     }
 
     private fitToPlaces() {
@@ -275,7 +308,7 @@ export class MapView extends ItemView {
         }
     }
 
-    // ── Marker rendern (respektiert Kategorie-Filter) ──────────────────────────
+    // ── Marker rendern (respektiert Kategorie- und Tages-Filter) ───────────────
 
     private renderMarkers() {
         if (!this.markerLayer) return;
@@ -284,6 +317,7 @@ export class MapView extends ItemView {
         for (const place of this.places) {
             const cat = place.category ?? UNCATEGORIZED;
             if (!this.activeCategories.has(cat)) continue;
+            if (!this.activeDays.has(this.dayKey(place))) continue;
             this.addMarker(place);
         }
     }
@@ -397,6 +431,45 @@ export class MapView extends ItemView {
         }
     }
 
+    private renderDayControl() {
+        if (!this.dayControlEl) return;
+        this.dayControlEl.empty();
+
+        const days = getDays(this.places);
+        const hasNoDay = this.places.some(p => typeof p.day !== "number");
+        const rows = days.map(d => `Day ${d}`);
+        if (hasNoDay) rows.push(NODAY);
+
+        if (rows.length <= 1) return; // Tages-Filter erst ab 2 Gruppen sinnvoll
+
+        const header = document.createElement("div");
+        header.className = "tm-rc-header";
+        header.textContent = "Days";
+        this.dayControlEl.appendChild(header);
+
+        for (const key of rows) {
+            const row = document.createElement("label");
+            row.className = "tm-rc-row";
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = this.activeDays.has(key);
+            cb.addEventListener("change", () => {
+                if (cb.checked) this.activeDays.add(key);
+                else this.activeDays.delete(key);
+                row.classList.toggle("tm-rc-row--off", !cb.checked);
+                this.renderMarkers();
+            });
+
+            const nameEl = document.createElement("span");
+            nameEl.textContent = key;
+
+            row.appendChild(cb);
+            row.appendChild(nameEl);
+            this.dayControlEl.appendChild(row);
+        }
+    }
+
     private addRoute(route: Route, places: Place[]) {
         if (!this.leafletMap) return;
 
@@ -423,12 +496,38 @@ export class MapView extends ItemView {
 
         group.addTo(this.leafletMap);
 
-        this.routeLayers.set(route.file.basename, {
+        const entry: RouteEntry = {
             group,
+            line,
             visible: true,
             color: route.color,
             distanceKm: routeDistanceKm(coords),
-        });
+        };
+        this.routeLayers.set(route.file.basename, entry);
+
+        // F8: optional die Linie an echte Straßen anpassen (Wegpunkte/Nummern bleiben).
+        if (this.plugin.settings.realRouting) {
+            void this.applyRealRouting(route.file.basename, coords, entry);
+        }
+    }
+
+    private async applyRealRouting(
+        name: string,
+        coords: [number, number][],
+        entry: RouteEntry,
+    ) {
+        const sig = routeSignature(coords);
+        const cached = this.routeCache.get(sig);
+        const road = cached ?? (await fetchRoute(coords));
+        if (road.length < 2) return; // Fehler/leer → Luftlinie bleibt stehen
+        if (!cached) this.routeCache.set(sig, road);
+
+        // Nur anwenden, wenn die Route noch aktuell ist (Trip nicht gewechselt).
+        if (this.routeLayers.get(name) !== entry) return;
+
+        entry.line.setLatLngs(road);
+        entry.distanceKm = routeDistanceKm(road);
+        this.renderRouteControl();
     }
 
     private renderRouteControl() {

@@ -43,6 +43,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName("Real road routing")
+            .setDesc("Draw routes along real roads via the public OSRM service instead of straight lines. Sends route coordinates to an external server. Off = offline straight lines.")
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.plugin.settings.realRouting)
+                    .onChange(async (value) => {
+                        this.plugin.settings.realRouting = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
         // ── Frontmatter keys ───────────────────────────────────────────────────
 
         containerEl.createEl("h3", { text: "Frontmatter keys" });
@@ -63,6 +75,7 @@ export class SettingsTab extends PluginSettingTab {
             { name: "Priority field", desc: 'Field for the 1–10 priority (e.g. "priority")', prop: "priorityField" },
             { name: "Color field", desc: 'Field for the route line color (e.g. "color")', prop: "colorField" },
             { name: "Locations field", desc: 'Field listing the route stops (e.g. "locations")', prop: "locationsField" },
+            { name: "Day field", desc: 'Field for the itinerary day, a number (e.g. "day")', prop: "dayField" },
         ];
 
         for (const { name, desc, prop } of keyDefs) {

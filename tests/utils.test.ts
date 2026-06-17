@@ -15,7 +15,9 @@ import {
     routeDistanceKm,
     formatDistance,
     sortPlacesByPriority,
+    getDays,
 } from "../src/utils";
+import { buildOsrmUrl, decodeOsrmGeometry, routeSignature } from "../src/routing";
 import { priorityColor, prioritySize, categoryIcon, DEFAULT_FRONTMATTER_KEYS } from "../src/types";
 import type { Place } from "../src/types";
 import { makeFile, makeFolder, makeApp } from "./helpers";
@@ -634,5 +636,108 @@ describe("sortPlacesByPriority", () => {
         const input = [mk("a", 1), mk("b", 9)];
         sortPlacesByPriority(input);
         expect(input.map(p => p.priority)).toEqual([1, 9]);
+    });
+});
+
+// ── getPlaces: day parsing ────────────────────────────────────────────────────
+
+describe("getPlaces day field", () => {
+    it("reads a numeric day", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
+        const app = makeApp({
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, day: 2 }]]),
+        }) as App;
+        expect(getPlaces(app, [file])[0].day).toBe(2);
+    });
+
+    it("rounds a decimal day", () => {
+        const file = makeFile("Trips/Croatia/Split.md");
+        const app = makeApp({
+            frontmatters: new Map([[file.path, { type: "place", lat: 43.5, lng: 16.4, day: 3.4 }]]),
+        }) as App;
+        expect(getPlaces(app, [file])[0].day).toBe(3);
+    });
+
+    it("leaves day undefined when missing or non-numeric", () => {
+        const a = makeFile("Trips/Croatia/A.md");
+        const b = makeFile("Trips/Croatia/B.md");
+        const app = makeApp({
+            frontmatters: new Map([
+                [a.path, { type: "place", lat: 43.5, lng: 16.4 }],
+                [b.path, { type: "place", lat: 43.5, lng: 16.4, day: "Monday" }],
+            ]),
+        }) as App;
+        const places = getPlaces(app, [a, b]);
+        expect(places[0].day).toBeUndefined();
+        expect(places[1].day).toBeUndefined();
+    });
+});
+
+// ── getDays ───────────────────────────────────────────────────────────────────
+
+describe("getDays", () => {
+    const mk = (day?: number): Place => ({
+        file: makeFile(`Trips/Croatia/${day ?? "x"}.md`),
+        lat: 0,
+        lng: 0,
+        priority: 5,
+        day,
+    });
+
+    it("returns distinct days sorted ascending", () => {
+        expect(getDays([mk(3), mk(1), mk(3), mk(2)])).toEqual([1, 2, 3]);
+    });
+
+    it("ignores places without a day", () => {
+        expect(getDays([mk(1), mk(undefined), mk(2)])).toEqual([1, 2]);
+    });
+
+    it("returns empty array when no days present", () => {
+        expect(getDays([mk(undefined)])).toEqual([]);
+    });
+});
+
+// ── OSRM routing helpers ──────────────────────────────────────────────────────
+
+describe("buildOsrmUrl", () => {
+    it("uses lng,lat order separated by semicolons", () => {
+        const url = buildOsrmUrl([[43.5081, 16.4402], [42.6507, 18.0944]]);
+        expect(url).toBe(
+            "https://router.project-osrm.org/route/v1/driving/16.4402,43.5081;18.0944,42.6507?overview=full&geometries=geojson",
+        );
+    });
+});
+
+describe("decodeOsrmGeometry", () => {
+    it("decodes lng,lat coordinates into lat,lng", () => {
+        const json = {
+            routes: [{ geometry: { coordinates: [[16.4402, 43.5081], [18.0944, 42.6507]] } }],
+        };
+        expect(decodeOsrmGeometry(json)).toEqual([[43.5081, 16.4402], [42.6507, 18.0944]]);
+    });
+
+    it("returns empty array when there are no routes", () => {
+        expect(decodeOsrmGeometry({ routes: [] })).toEqual([]);
+        expect(decodeOsrmGeometry({})).toEqual([]);
+        expect(decodeOsrmGeometry(null)).toEqual([]);
+    });
+
+    it("skips malformed coordinate pairs", () => {
+        const json = {
+            routes: [{ geometry: { coordinates: [[16.4, 43.5], ["bad"], [18.1, 42.6]] } }],
+        };
+        expect(decodeOsrmGeometry(json)).toEqual([[43.5, 16.4], [42.6, 18.1]]);
+    });
+});
+
+describe("routeSignature", () => {
+    it("builds a stable signature from coordinates", () => {
+        expect(routeSignature([[43.5, 16.4], [42.6, 18.1]])).toBe("43.5,16.4;42.6,18.1");
+    });
+
+    it("differs when order changes", () => {
+        const a = routeSignature([[1, 2], [3, 4]]);
+        const b = routeSignature([[3, 4], [1, 2]]);
+        expect(a).not.toBe(b);
     });
 });

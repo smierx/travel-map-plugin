@@ -31,3 +31,9 @@ export class Modal { constructor(_app: unknown) {} }
 export class PluginSettingTab { constructor(_app: unknown, _plugin: unknown) {} }
 export class Setting { constructor(_el: HTMLElement) {} }
 export class Component {}
+
+// Netzwerk-Helfer – im Test nicht aufgerufen, nur als Export vorhanden,
+// damit Module die ihn importieren (routing.ts) sich laden lassen.
+export function requestUrl(_opts: unknown): Promise<{ json: unknown }> {
+    throw new Error("requestUrl is not mocked in unit tests");
+}
