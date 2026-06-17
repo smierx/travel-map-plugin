@@ -11,6 +11,10 @@ import {
     buildPlaceFileContent,
     parseCategoryIcons,
     serializeCategoryIcons,
+    haversineKm,
+    routeDistanceKm,
+    formatDistance,
+    sortPlacesByPriority,
 } from "../src/utils";
 import { priorityColor, prioritySize, categoryIcon, DEFAULT_FRONTMATTER_KEYS } from "../src/types";
 import type { Place } from "../src/types";
@@ -551,5 +555,84 @@ describe("serializeCategoryIcons", () => {
 
     it("returns empty string for empty map", () => {
         expect(serializeCategoryIcons({})).toBe("");
+    });
+});
+
+// ── haversineKm / routeDistanceKm ─────────────────────────────────────────────
+
+describe("haversineKm", () => {
+    it("returns 0 for identical points", () => {
+        expect(haversineKm([43.5, 16.4], [43.5, 16.4])).toBe(0);
+    });
+
+    it("computes a known distance (Split → Dubrovnik ≈ 157 km)", () => {
+        const d = haversineKm([43.5081, 16.4402], [42.6507, 18.0944]);
+        expect(d).toBeGreaterThan(150);
+        expect(d).toBeLessThan(165);
+    });
+
+    it("is symmetric", () => {
+        const a: [number, number] = [43.5, 16.4];
+        const b: [number, number] = [42.6, 18.1];
+        expect(haversineKm(a, b)).toBeCloseTo(haversineKm(b, a), 9);
+    });
+});
+
+describe("routeDistanceKm", () => {
+    it("sums the legs of a multi-point route", () => {
+        const coords: [number, number][] = [
+            [43.5081, 16.4402],
+            [43.1729, 16.4412],
+            [42.6507, 18.0944],
+        ];
+        const total = routeDistanceKm(coords);
+        const expected =
+            haversineKm(coords[0], coords[1]) + haversineKm(coords[1], coords[2]);
+        expect(total).toBeCloseTo(expected, 9);
+    });
+
+    it("returns 0 for fewer than two points", () => {
+        expect(routeDistanceKm([])).toBe(0);
+        expect(routeDistanceKm([[43.5, 16.4]])).toBe(0);
+    });
+});
+
+// ── formatDistance ────────────────────────────────────────────────────────────
+
+describe("formatDistance", () => {
+    it("uses one decimal below 10 km", () => {
+        expect(formatDistance(3.456)).toBe("3.5 km");
+    });
+
+    it("rounds to whole km at 10 km and above", () => {
+        expect(formatDistance(142.3)).toBe("142 km");
+        expect(formatDistance(10)).toBe("10 km");
+    });
+});
+
+// ── sortPlacesByPriority ──────────────────────────────────────────────────────
+
+describe("sortPlacesByPriority", () => {
+    const mk = (name: string, priority: number): Place => ({
+        file: makeFile(`Trips/Croatia/${name}.md`),
+        lat: 0,
+        lng: 0,
+        priority,
+    });
+
+    it("sorts by priority descending", () => {
+        const sorted = sortPlacesByPriority([mk("a", 3), mk("b", 9), mk("c", 5)]);
+        expect(sorted.map(p => p.priority)).toEqual([9, 5, 3]);
+    });
+
+    it("breaks ties alphabetically by basename", () => {
+        const sorted = sortPlacesByPriority([mk("Zadar", 5), mk("Dubrovnik", 5), mk("Split", 5)]);
+        expect(sorted.map(p => p.file.basename)).toEqual(["Dubrovnik", "Split", "Zadar"]);
+    });
+
+    it("does not mutate the input array", () => {
+        const input = [mk("a", 1), mk("b", 9)];
+        sortPlacesByPriority(input);
+        expect(input.map(p => p.priority)).toEqual([1, 9]);
     });
 });

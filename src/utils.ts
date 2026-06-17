@@ -98,6 +98,14 @@ export function serializeCategoryIcons(map: Record<string, string>): string {
         .join("\n");
 }
 
+// Orte nach Priorität absteigend, bei Gleichstand alphabetisch. Mutiert nicht.
+export function sortPlacesByPriority(places: Place[]): Place[] {
+    return [...places].sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        return a.file.basename.localeCompare(b.file.basename);
+    });
+}
+
 // Distinkte, alphabetisch sortierte Kategorien aller Orte.
 export function getCategories(places: Place[]): string[] {
     const set = new Set<string>();
@@ -142,4 +150,31 @@ export function resolveRouteCoords(places: Place[], wikilinks: string[]): [numbe
         })
         .filter((p): p is Place => p !== undefined)
         .map(p => [p.lat, p.lng]);
+}
+
+// Luftlinien-Distanz zwischen zwei Koordinaten in km (Haversine).
+export function haversineKm(a: [number, number], b: [number, number]): number {
+    const R = 6371; // Erdradius in km
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b[0] - a[0]);
+    const dLng = toRad(b[1] - a[1]);
+    const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Summierte Luftlinien-Distanz entlang einer Koordinatenfolge in km.
+export function routeDistanceKm(coords: [number, number][]): number {
+    let sum = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+        sum += haversineKm(coords[i], coords[i + 1]);
+    }
+    return sum;
+}
+
+// Distanz für die Anzeige formatieren: < 10 km eine Nachkommastelle, sonst gerundet.
+export function formatDistance(km: number): string {
+    if (km < 10) return `${km.toFixed(1)} km`;
+    return `${Math.round(km)} km`;
 }

@@ -2,7 +2,7 @@ import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import * as L from "leaflet";
 import TravelMapPlugin from "../main";
 import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend, categoryIcon } from "./types";
-import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, roundCoord, buildPlaceFileContent } from "./utils";
+import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, roundCoord, buildPlaceFileContent, routeDistanceKm, formatDistance, sortPlacesByPriority } from "./utils";
 import { CreatePlaceModal } from "./CreatePlaceModal";
 
 export const TRAVEL_MAP_VIEW_TYPE = "travel-map";
@@ -10,8 +10,10 @@ export const TRAVEL_MAP_VIEW_TYPE = "travel-map";
 const UNCATEGORIZED = "(no category)";
 
 interface RouteEntry {
-    line: L.Polyline;
+    group: L.LayerGroup;
     visible: boolean;
+    color: string;
+    distanceKm: number;
 }
 
 export class MapView extends ItemView {
@@ -27,6 +29,7 @@ export class MapView extends ItemView {
     private mapEl: HTMLElement | null = null;
     private routeControlEl: HTMLElement | null = null;
     private categoryControlEl: HTMLElement | null = null;
+    private placeListEl: HTMLElement | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: TravelMapPlugin) {
         super(leaf);
@@ -53,6 +56,7 @@ export class MapView extends ItemView {
         this.mapEl = null;
         this.routeControlEl = null;
         this.categoryControlEl = null;
+        this.placeListEl = null;
         this.markerLayer = null;
         this.routeLayers.clear();
         this.markers.clear();
@@ -119,6 +123,7 @@ export class MapView extends ItemView {
 
         this.markerLayer = L.layerGroup().addTo(map);
         this.addLegendControl(map, this.plugin.settings.colors);
+        this.addPlaceListControl(map);
         this.addCategoryControl(map);
         this.addRouteControl(map);
         this.leafletMap = map;
@@ -219,7 +224,7 @@ export class MapView extends ItemView {
     private refreshMap() {
         if (!this.leafletMap || !this.markerLayer) return;
 
-        for (const { line } of this.routeLayers.values()) line.remove();
+        for (const { group } of this.routeLayers.values()) group.remove();
         this.routeLayers.clear();
 
         if (!this.activeVacation) {
@@ -229,6 +234,7 @@ export class MapView extends ItemView {
             this.markers.clear();
             this.renderCategoryControl();
             this.renderRouteControl();
+            this.renderPlaceList();
             return;
         }
 
@@ -256,6 +262,7 @@ export class MapView extends ItemView {
 
         this.renderCategoryControl();
         this.renderRouteControl();
+        this.renderPlaceList();
     }
 
     private fitToPlaces() {
@@ -400,9 +407,28 @@ export class MapView extends ItemView {
             color: route.color,
             weight: 3,
             opacity: 0.8,
-        }).addTo(this.leafletMap);
+        });
 
-        this.routeLayers.set(route.file.basename, { line, visible: true });
+        // F6: nummerierte Wegpunkte (Reihenfolge entlang der Route).
+        const group = L.layerGroup([line]);
+        coords.forEach((coord, i) => {
+            const badge = L.divIcon({
+                className: "tm-route-num",
+                html: `<div class="tm-route-num-inner" style="background:${route.color}">${i + 1}</div>`,
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+            });
+            L.marker(coord, { icon: badge, interactive: false, keyboard: false }).addTo(group);
+        });
+
+        group.addTo(this.leafletMap);
+
+        this.routeLayers.set(route.file.basename, {
+            group,
+            visible: true,
+            color: route.color,
+            distanceKm: routeDistanceKm(coords),
+        });
     }
 
     private renderRouteControl() {
@@ -426,22 +452,86 @@ export class MapView extends ItemView {
             cb.addEventListener("change", () => {
                 if (!this.leafletMap) return;
                 entry.visible = cb.checked;
-                if (cb.checked) entry.line.addTo(this.leafletMap);
-                else entry.line.remove();
+                if (cb.checked) entry.group.addTo(this.leafletMap);
+                else entry.group.remove();
                 row.classList.toggle("tm-rc-row--off", !cb.checked);
             });
 
             const colorDot = document.createElement("span");
             colorDot.className = "tm-rc-dot";
-            colorDot.style.background = (entry.line.options as L.PolylineOptions).color as string ?? "#3388ff";
+            colorDot.style.background = entry.color;
 
             const nameEl = document.createElement("span");
+            nameEl.className = "tm-rc-name";
             nameEl.textContent = name;
+
+            const distEl = document.createElement("span");
+            distEl.className = "tm-rc-dist";
+            distEl.textContent = formatDistance(entry.distanceKm);
 
             row.appendChild(cb);
             row.appendChild(colorDot);
             row.appendChild(nameEl);
+            row.appendChild(distEl);
             this.routeControlEl.appendChild(row);
         }
+    }
+
+    // ── F4: Orts-Liste / Sprung-Panel ──────────────────────────────────────────
+
+    private addPlaceListControl(map: L.Map) {
+        const self = this;
+        const PlaceListControl = L.Control.extend({
+            onAdd() {
+                const div = L.DomUtil.create("div", "tm-place-list leaflet-bar");
+                L.DomEvent.disableClickPropagation(div);
+                L.DomEvent.disableScrollPropagation(div);
+                self.placeListEl = div;
+                return div;
+            },
+        });
+        new PlaceListControl({ position: "topleft" }).addTo(map);
+    }
+
+    private renderPlaceList() {
+        if (!this.placeListEl) return;
+        this.placeListEl.empty();
+
+        if (this.places.length === 0) return;
+
+        const header = document.createElement("div");
+        header.className = "tm-rc-header";
+        header.textContent = `Places (${this.places.length})`;
+        this.placeListEl.appendChild(header);
+
+        const list = document.createElement("div");
+        list.className = "tm-pl-scroll";
+        this.placeListEl.appendChild(list);
+
+        for (const place of sortPlacesByPriority(this.places)) {
+            const row = document.createElement("div");
+            row.className = "tm-pl-row";
+
+            const dot = document.createElement("span");
+            dot.className = "tm-rc-dot";
+            dot.style.background = priorityColor(place.priority, this.plugin.settings.colors);
+
+            const emoji = categoryIcon(place.category, this.plugin.settings.categoryIcons);
+            const nameEl = document.createElement("span");
+            nameEl.className = "tm-pl-name";
+            nameEl.textContent = emoji ? `${emoji} ${place.file.basename}` : place.file.basename;
+
+            row.appendChild(dot);
+            row.appendChild(nameEl);
+            row.addEventListener("click", () => this.flyToPlace(place));
+            list.appendChild(row);
+        }
+    }
+
+    private flyToPlace(place: Place) {
+        if (!this.leafletMap) return;
+        this.leafletMap.setView([place.lat, place.lng], 13);
+        const marker = this.markers.get(place.file.basename);
+        if (marker) marker.openPopup();
     }
 }

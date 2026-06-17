@@ -613,6 +613,77 @@ svg.leaflet-image-layer.leaflet-interactive path {
     margin-bottom: 8px;
 }
 
+/* Routen-Name + Distanz nebeneinander */
+.tm-rc-name {
+    flex: 1;
+}
+
+.tm-rc-dist {
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+}
+
+/* ── Orts-Liste (oben links auf der Karte) ───────────────────────────── */
+
+.tm-place-list {
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+    min-width: 150px;
+    max-width: 220px;
+    overflow: hidden;
+    font-family: inherit;
+}
+
+.tm-pl-scroll {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.tm-pl-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.tm-pl-row:hover {
+    background: #f5f5f5;
+}
+
+.tm-pl-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Nummerierte Wegpunkte einer Route ───────────────────────────────── */
+
+.tm-route-num {
+    background: transparent !important;
+    border: none !important;
+}
+
+.tm-route-num-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
 /* ── New-Place-Modal ─────────────────────────────────────────────────── */
 
 .tm-modal-coords {
