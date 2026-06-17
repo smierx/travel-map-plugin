@@ -51,10 +51,12 @@ travel-map-plugin/
 ├── esbuild.config.mjs       # Build pipeline; reads OBSIDIAN_PLUGIN_DIR env var
 ├── styles.css               # Leaflet CSS (static) + plugin UI CSS
 └── src/
-    ├── types.ts             # Interfaces: Place, Route, TravelMapSettings
-    ├── utils.ts             # File scanning, frontmatter parsing, wikilink resolution
+    ├── types.ts             # Interfaces + helpers: Place, Route, TravelMapSettings, priority/category/day
+    ├── utils.ts             # File scanning, frontmatter parsing, wikilink resolution, distance, filters
+    ├── routing.ts           # OSRM real-road routing (buildOsrmUrl, decodeOsrmGeometry, fetchRoute)
     ├── MapView.ts           # ItemView with Leaflet map (main component)
-    └── SettingsTab.ts       # Plugin settings (root folder, key names, colors)
+    ├── CreatePlaceModal.ts  # Modal for right-click "new place"
+    └── SettingsTab.ts       # Plugin settings (root folder, key names, colors, icons, toggles)
 ```
 
 ---
@@ -80,32 +82,49 @@ Entry point. Registers the MapView, ribbon button, command, and SettingsTab. Hol
 
 **`src/MapView.ts` – MapView extends ItemView**
 The map component. Responsible for:
-- Building the UI (toolbar with dropdown, map container, route toggles)
+- Building the UI (toolbar with dropdown, map container, control panels)
 - Initializing Leaflet
-- Rendering place pins
-- Rendering routes as colored polylines
+- Rendering place pins (with category emoji), draggable with write-back
+- Rendering routes as colored polylines with numbered waypoints and distance
+- Category and day filter panels, place list (fly-to), real-road routing
 - Live updates via `metadataCache.on("changed")`
+
+State worth knowing:
+- `places` / `routes` – cached data for the active trip, so filter toggles re-render without re-reading the vault
+- `markers` – registry by `file.basename`, used by the place list to open popups
+- `activeCategories` / `activeDays` – `Set<string>` filter state, kept in sync via `syncFilter()`
+- `routeLayers` – per route: a `LayerGroup` (line + numbered waypoints), color, distance
+- `routeCache` – OSRM geometry by route signature, avoids refetching
 
 Lifecycle:
 - `onOpen()` → builds UI, registers event listeners
 - `buildUI()` → can also be called from the refresh button; re-initializes everything
-- `initLeaflet()` → initializes the Leaflet map (with 50 ms delay for DOM layout)
-- `refreshMap()` → clears and re-renders pins/routes (no map restart)
+- `initLeaflet()` → initializes the Leaflet map (with 50 ms delay for DOM layout), registers `contextmenu`
+- `refreshMap()` → reloads data, syncs filters, re-renders pins/routes/panels (no map restart)
 - `onClose()` → cleans up Leaflet
 
-**`src/utils.ts` – File scanning**
-Pure functions without side effects:
-- `getVacations(app, rootFolder)` → direct subfolders as TFolder[]
-- `getVacationFiles(app, vacationPath)` → all .md files recursively
-- `getPlaces(app, files)` → Place[] from files with `type: place`
-- `getRoutes(app, files)` → Route[] from files with `type: route`
-- `resolveRouteCoords(places, wikilinks)` → coordinate array for polylines
+**`src/utils.ts` – Pure helpers**
+No side effects, fully unit-tested:
+- `getVacations` / `getVacationFiles` → trip folders and their `.md` files
+- `getPlaces` / `getRoutes` → parse frontmatter (incl. `priority`, `day`) into `Place[]` / `Route[]`
+- `resolveRouteCoords` / `parseWikilink` → wikilinks to coordinates
+- `getCategories` / `getDays` → distinct filter values
+- `sortPlacesByPriority` → place-list ordering
+- `haversineKm` / `routeDistanceKm` / `formatDistance` → route distances
+- `roundCoord`, `buildPlaceFileContent` → new-place creation
+- `parseCategoryIcons` / `serializeCategoryIcons` → settings ↔ icon map
+
+**`src/routing.ts` – OSRM routing** (opt-in)
+`buildOsrmUrl`, `decodeOsrmGeometry`, `routeSignature` are pure; `fetchRoute(coords)` calls Obsidian's `requestUrl` and falls back to `[]` on error.
+
+**`src/CreatePlaceModal.ts` – CreatePlaceModal extends Modal**
+Name (required) + optional category/priority. On submit calls back into MapView, which writes the note via `vault.create()`.
 
 **`src/types.ts` – Types**
-Interfaces and constants. No Obsidian API code here.
+Interfaces, defaults, and pure helpers (`priorityColor`, `prioritySize`, `buildLegend`, `categoryIcon`). No Obsidian API code here.
 
 **`src/SettingsTab.ts` – SettingsTab extends PluginSettingTab**
-Settings tab for the root folder, frontmatter key names, and priority colors.
+Root folder, frontmatter key names (incl. `dayField`), priority colors, category-icon editor, and the open-new-place + real-routing toggles.
 
 ---
 
@@ -117,9 +136,12 @@ Settings tab for the root folder, frontmatter key names, and priority colors.
 type: place           # required – identifies the file as a location
 lat: 43.5081          # required – latitude (number)
 lng: 16.4402          # required – longitude (number)
-category: city        # optional – shown in the popup
+category: city        # optional – popup + category filter + icon
 priority: 9           # optional – 1–10, defaults to 5
+day: 1                # optional – itinerary day (number), enables the day filter
 ```
+
+All field names are configurable in settings via `FrontmatterKeys` (`typeField`, `categoryField`, `priorityField`, `dayField`, `colorField`, `locationsField`, …), so existing vaults can keep their own naming.
 
 ### Route
 
@@ -157,15 +179,16 @@ The 50 ms `setTimeout` in `initLeaflet()` ensures the layout is set before Leafl
 
 ## Adding a new feature
 
-### New category / pin color
+### New priority tier color
 
-In `src/types.ts` → add to `PRIORITY_LEGEND` or extend the `Place` interface.
+In `src/types.ts` → adjust `DEFAULT_PRIORITY_COLORS`, `priorityColor()`, `prioritySize()`, and `buildLegend()`.
 
 ### New frontmatter field for places
 
-1. Add to the `Place` interface in `src/types.ts`
+1. Add to the `Place` interface and a key to `FrontmatterKeys` in `src/types.ts`
 2. Read the field in `src/utils.ts → getPlaces()`
-3. Use it in `src/MapView.ts → addMarker()` (e.g. show in popup)
+3. Expose the key in `src/SettingsTab.ts` (`keyDefs`)
+4. Use it in `src/MapView.ts → addMarker()` (popup) or add a filter panel (see the category/day panels)
 
 ### Extend popup content
 
@@ -201,6 +224,10 @@ Dev vs. prod:
 | `app.metadataCache.getFileCache()` | Read frontmatter |
 | `metadataCache.on("changed")` | Live updates on file changes |
 | `app.vault.getAbstractFileByPath()` | Get folder/file by path |
+| `app.vault.create()` | Create a new place note (right-click) |
+| `app.fileManager.processFrontMatter()` | Write `lat`/`lng` back after a drag |
+| `requestUrl()` | Fetch OSRM road geometry |
+| `Modal` | "New place" dialog |
 | `app.workspace.getRightLeaf()` | Open view on the right |
 | `app.workspace.revealLeaf()` | Focus an existing view |
 | `workspace.getLeaf().openFile()` | Open file in editor |
