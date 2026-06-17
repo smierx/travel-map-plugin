@@ -37,6 +37,8 @@ export interface TravelMapSettings {
     activeVacation: string;
     keys: FrontmatterKeys;
     colors: PriorityColors;
+    openNewPlace: boolean;
+    categoryIcons: Record<string, string>;
 }
 
 export const DEFAULT_FRONTMATTER_KEYS: FrontmatterKeys = {
@@ -57,14 +59,49 @@ export const DEFAULT_PRIORITY_COLORS: PriorityColors = {
     tier5: "#e74c3c",
 };
 
+// Emoji pro Kategorie. Keys sind lowercase, EN + gängige DE-Varianten.
+// Frei erweiterbar in den Settings.
+export const DEFAULT_CATEGORY_ICONS: Record<string, string> = {
+    city: "🏙️",
+    stadt: "🏙️",
+    accommodation: "🏨",
+    unterkunft: "🏨",
+    hotel: "🏨",
+    restaurant: "🍴",
+    food: "🍴",
+    essen: "🍴",
+    activity: "🎯",
+    aktivität: "🎯",
+    aktivitaet: "🎯",
+    sight: "📸",
+    sehenswürdigkeit: "📸",
+    nature: "🌲",
+    natur: "🌲",
+    beach: "🏖️",
+    strand: "🏖️",
+    bar: "🍸",
+    shopping: "🛍️",
+};
+
 export const DEFAULT_SETTINGS: TravelMapSettings = {
     rootFolder: "Reisen",
     activeVacation: "",
     keys: { ...DEFAULT_FRONTMATTER_KEYS },
     colors: { ...DEFAULT_PRIORITY_COLORS },
+    openNewPlace: true,
+    categoryIcons: { ...DEFAULT_CATEGORY_ICONS },
 };
 
 export const PRIORITY_DEFAULT = 5;
+
+// Emoji für eine Kategorie, case-insensitiv. Leerstring wenn keins definiert.
+export function categoryIcon(
+    category: string | undefined,
+    icons: Record<string, string> = DEFAULT_CATEGORY_ICONS,
+): string {
+    if (!category) return "";
+    return icons[category.toLowerCase()] ?? "";
+}
 
 export function priorityColor(p: number, colors: PriorityColors = DEFAULT_PRIORITY_COLORS): string {
     if (p <= 2) return colors.tier1;

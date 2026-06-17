@@ -71,6 +71,69 @@ export function parseWikilink(link: string): string {
     return link.replace(/^\[\[/, "").replace(/\]\]$/, "").split("|")[0].trim();
 }
 
+// Rundet eine Koordinate auf 6 Nachkommastellen (~11cm Genauigkeit, mehr ist sinnlos).
+export function roundCoord(n: number): number {
+    return Math.round(n * 1e6) / 1e6;
+}
+
+// Parst eine "kategorie: emoji" Zeile-pro-Eintrag-Texteingabe in eine Map.
+// Keys werden lowercased, leere Zeilen und Zeilen ohne ":" ignoriert.
+export function parseCategoryIcons(text: string): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const line of text.split("\n")) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const icon = line.slice(idx + 1).trim();
+        if (key && icon) map[key] = icon;
+    }
+    return map;
+}
+
+// Serialisiert die Map zurück in "kategorie: emoji" Zeilen, alphabetisch sortiert.
+export function serializeCategoryIcons(map: Record<string, string>): string {
+    return Object.keys(map)
+        .sort((a, b) => a.localeCompare(b))
+        .map((k) => `${k}: ${map[k]}`)
+        .join("\n");
+}
+
+// Distinkte, alphabetisch sortierte Kategorien aller Orte.
+export function getCategories(places: Place[]): string[] {
+    const set = new Set<string>();
+    for (const p of places) {
+        if (p.category) set.add(p.category);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export interface NewPlaceOptions {
+    category?: string;
+    priority?: number;
+}
+
+// Baut den Markdown-Inhalt einer neuen Orts-Datei. Respektiert die konfigurierten
+// Frontmatter-Keys, damit deutsche wie englische Feldnamen funktionieren.
+export function buildPlaceFileContent(
+    keys: FrontmatterKeys,
+    lat: number,
+    lng: number,
+    opts: NewPlaceOptions = {},
+): string {
+    const lines = [
+        "---",
+        `${keys.typeField}: ${keys.placeValue}`,
+        `lat: ${roundCoord(lat)}`,
+        `lng: ${roundCoord(lng)}`,
+    ];
+    if (opts.category) lines.push(`${keys.categoryField}: ${opts.category}`);
+    if (typeof opts.priority === "number") {
+        lines.push(`${keys.priorityField}: ${Math.min(10, Math.max(1, Math.round(opts.priority)))}`);
+    }
+    lines.push("---", "");
+    return lines.join("\n");
+}
+
 export function resolveRouteCoords(places: Place[], wikilinks: string[]): [number, number][] {
     return wikilinks
         .map(link => {

@@ -6,8 +6,14 @@ import {
     getRoutes,
     getVacationFiles,
     getVacations,
+    roundCoord,
+    getCategories,
+    buildPlaceFileContent,
+    parseCategoryIcons,
+    serializeCategoryIcons,
 } from "../src/utils";
-import { priorityColor, prioritySize } from "../src/types";
+import { priorityColor, prioritySize, categoryIcon, DEFAULT_FRONTMATTER_KEYS } from "../src/types";
+import type { Place } from "../src/types";
 import { makeFile, makeFolder, makeApp } from "./helpers";
 import type { App } from "obsidian";
 
@@ -385,5 +391,165 @@ describe("getVacations", () => {
         const app = makeApp({ files: new Map([["Trips", root]]) }) as App;
 
         expect(getVacations(app, "Trips")).toHaveLength(0);
+    });
+});
+
+// ── roundCoord ────────────────────────────────────────────────────────────────
+
+describe("roundCoord", () => {
+    it("rounds to 6 decimal places", () => {
+        expect(roundCoord(43.50812345)).toBe(43.508123);
+        expect(roundCoord(16.4402)).toBe(16.4402);
+    });
+
+    it("handles negative coordinates", () => {
+        expect(roundCoord(-8.6109876)).toBe(-8.610988);
+    });
+
+    it("leaves whole numbers unchanged", () => {
+        expect(roundCoord(45)).toBe(45);
+    });
+});
+
+// ── getCategories ─────────────────────────────────────────────────────────────
+
+describe("getCategories", () => {
+    const mk = (category?: string): Place => ({
+        file: makeFile(`Trips/Croatia/${category ?? "x"}.md`),
+        lat: 0,
+        lng: 0,
+        category,
+        priority: 5,
+    });
+
+    it("returns distinct categories sorted alphabetically", () => {
+        const places = [mk("restaurant"), mk("city"), mk("restaurant"), mk("activity")];
+        expect(getCategories(places)).toEqual(["activity", "city", "restaurant"]);
+    });
+
+    it("ignores places without a category", () => {
+        const places = [mk("city"), mk(undefined), mk("city")];
+        expect(getCategories(places)).toEqual(["city"]);
+    });
+
+    it("returns empty array when no categories present", () => {
+        expect(getCategories([mk(undefined), mk(undefined)])).toEqual([]);
+    });
+
+    it("returns empty array for no places", () => {
+        expect(getCategories([])).toEqual([]);
+    });
+});
+
+// ── buildPlaceFileContent ─────────────────────────────────────────────────────
+
+describe("buildPlaceFileContent", () => {
+    const keys = DEFAULT_FRONTMATTER_KEYS;
+
+    it("builds minimal frontmatter with default keys", () => {
+        const content = buildPlaceFileContent(keys, 43.5081, 16.4402);
+        expect(content).toBe(
+            "---\ntype: place\nlat: 43.5081\nlng: 16.4402\n---\n",
+        );
+    });
+
+    it("includes category and priority when provided", () => {
+        const content = buildPlaceFileContent(keys, 43.5, 16.4, { category: "city", priority: 9 });
+        expect(content).toContain("category: city");
+        expect(content).toContain("priority: 9");
+    });
+
+    it("omits category and priority when not provided", () => {
+        const content = buildPlaceFileContent(keys, 43.5, 16.4);
+        expect(content).not.toContain("category:");
+        expect(content).not.toContain("priority:");
+    });
+
+    it("rounds coordinates to 6 decimals", () => {
+        const content = buildPlaceFileContent(keys, 43.50812345, 16.44021111);
+        expect(content).toContain("lat: 43.508123");
+        expect(content).toContain("lng: 16.440211");
+    });
+
+    it("clamps priority into 1–10", () => {
+        expect(buildPlaceFileContent(keys, 0, 0, { priority: 99 })).toContain("priority: 10");
+        expect(buildPlaceFileContent(keys, 0, 0, { priority: -3 })).toContain("priority: 1");
+    });
+
+    it("respects custom frontmatter keys", () => {
+        const custom = { ...keys, typeField: "typ", placeValue: "ort", categoryField: "kategorie" };
+        const content = buildPlaceFileContent(custom, 43.5, 16.4, { category: "stadt" });
+        expect(content).toContain("typ: ort");
+        expect(content).toContain("kategorie: stadt");
+    });
+});
+
+// ── categoryIcon ──────────────────────────────────────────────────────────────
+
+describe("categoryIcon", () => {
+    const icons = { city: "🏙️", restaurant: "🍴" };
+
+    it("returns the icon for a known category", () => {
+        expect(categoryIcon("city", icons)).toBe("🏙️");
+    });
+
+    it("matches case-insensitively", () => {
+        expect(categoryIcon("City", icons)).toBe("🏙️");
+        expect(categoryIcon("RESTAURANT", icons)).toBe("🍴");
+    });
+
+    it("returns empty string for unknown category", () => {
+        expect(categoryIcon("spaceport", icons)).toBe("");
+    });
+
+    it("returns empty string for undefined category", () => {
+        expect(categoryIcon(undefined, icons)).toBe("");
+    });
+});
+
+// ── parseCategoryIcons / serializeCategoryIcons ───────────────────────────────
+
+describe("parseCategoryIcons", () => {
+    it("parses category: emoji lines", () => {
+        expect(parseCategoryIcons("city: 🏙️\nrestaurant: 🍴")).toEqual({
+            city: "🏙️",
+            restaurant: "🍴",
+        });
+    });
+
+    it("lowercases keys and trims whitespace", () => {
+        expect(parseCategoryIcons("  City :  🏙️ ")).toEqual({ city: "🏙️" });
+    });
+
+    it("ignores empty lines and lines without a colon", () => {
+        expect(parseCategoryIcons("city: 🏙️\n\nnonsense\nrestaurant: 🍴")).toEqual({
+            city: "🏙️",
+            restaurant: "🍴",
+        });
+    });
+
+    it("ignores entries with empty key or icon", () => {
+        expect(parseCategoryIcons(": 🏙️\ncity: ")).toEqual({});
+    });
+
+    it("returns empty object for empty input", () => {
+        expect(parseCategoryIcons("")).toEqual({});
+    });
+});
+
+describe("serializeCategoryIcons", () => {
+    it("serializes to sorted category: emoji lines", () => {
+        expect(serializeCategoryIcons({ restaurant: "🍴", city: "🏙️" })).toBe(
+            "city: 🏙️\nrestaurant: 🍴",
+        );
+    });
+
+    it("round-trips with parseCategoryIcons", () => {
+        const map = { city: "🏙️", restaurant: "🍴", bar: "🍸" };
+        expect(parseCategoryIcons(serializeCategoryIcons(map))).toEqual(map);
+    });
+
+    it("returns empty string for empty map", () => {
+        expect(serializeCategoryIcons({})).toBe("");
     });
 });

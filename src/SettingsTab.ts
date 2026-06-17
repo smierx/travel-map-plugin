@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import TravelMapPlugin from "../main";
-import { DEFAULT_FRONTMATTER_KEYS, DEFAULT_PRIORITY_COLORS } from "./types";
+import { DEFAULT_FRONTMATTER_KEYS, DEFAULT_PRIORITY_COLORS, DEFAULT_CATEGORY_ICONS } from "./types";
+import { parseCategoryIcons, serializeCategoryIcons } from "./utils";
 
 export class SettingsTab extends PluginSettingTab {
     private plugin: TravelMapPlugin;
@@ -26,6 +27,18 @@ export class SettingsTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.rootFolder = value.trim();
                         this.plugin.settings.activeVacation = "";
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Open new place after creating")
+            .setDesc("When you create a place by right-clicking the map, open its note right away.")
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.plugin.settings.openNewPlace)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openNewPlace = value;
                         await this.plugin.saveSettings();
                     })
             );
@@ -118,6 +131,39 @@ export class SettingsTab extends PluginSettingTab {
                     .setButtonText("Reset")
                     .onClick(async () => {
                         this.plugin.settings.colors = { ...DEFAULT_PRIORITY_COLORS };
+                        await this.plugin.saveSettings();
+                        this.display();
+                    })
+            );
+
+        // ── Category icons ─────────────────────────────────────────────────────
+
+        containerEl.createEl("h3", { text: "Category icons" });
+        containerEl.createEl("p", {
+            text: "One emoji per category, format \"category: 🏙️\" (one per line). Shown inside the pin and in the category filter. Category names are case-insensitive.",
+            cls: "setting-item-description",
+        });
+
+        new Setting(containerEl)
+            .setName("Icons")
+            .addTextArea(area => {
+                area
+                    .setValue(serializeCategoryIcons(this.plugin.settings.categoryIcons))
+                    .onChange(async (value) => {
+                        this.plugin.settings.categoryIcons = parseCategoryIcons(value);
+                        await this.plugin.saveSettings();
+                    });
+                area.inputEl.rows = 8;
+                area.inputEl.addClass("tm-icons-textarea");
+            });
+
+        new Setting(containerEl)
+            .setName("Reset icons to defaults")
+            .addButton(btn =>
+                btn
+                    .setButtonText("Reset")
+                    .onClick(async () => {
+                        this.plugin.settings.categoryIcons = { ...DEFAULT_CATEGORY_ICONS };
                         await this.plugin.saveSettings();
                         this.display();
                     })

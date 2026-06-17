@@ -33,6 +33,7 @@ export default class TravelMapPlugin extends Plugin {
             ...saved,
             keys: { ...DEFAULT_SETTINGS.keys, ...(saved?.keys ?? {}) },
             colors: { ...DEFAULT_SETTINGS.colors, ...(saved?.colors ?? {}) },
+            categoryIcons: saved?.categoryIcons ?? { ...DEFAULT_SETTINGS.categoryIcons },
         };
     }
 

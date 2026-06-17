@@ -1,10 +1,13 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import * as L from "leaflet";
 import TravelMapPlugin from "../main";
-import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend } from "./types";
-import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords } from "./utils";
+import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend, categoryIcon } from "./types";
+import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, roundCoord, buildPlaceFileContent } from "./utils";
+import { CreatePlaceModal } from "./CreatePlaceModal";
 
 export const TRAVEL_MAP_VIEW_TYPE = "travel-map";
+
+const UNCATEGORIZED = "(no category)";
 
 interface RouteEntry {
     line: L.Polyline;
@@ -16,9 +19,14 @@ export class MapView extends ItemView {
     private leafletMap: L.Map | null = null;
     private markerLayer: L.LayerGroup | null = null;
     private routeLayers: Map<string, RouteEntry> = new Map();
+    private markers: Map<string, L.Marker> = new Map();
+    private places: Place[] = [];
+    private routes: Route[] = [];
+    private activeCategories: Set<string> = new Set();
     private activeVacation: string = "";
     private mapEl: HTMLElement | null = null;
     private routeControlEl: HTMLElement | null = null;
+    private categoryControlEl: HTMLElement | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: TravelMapPlugin) {
         super(leaf);
@@ -44,8 +52,10 @@ export class MapView extends ItemView {
         }
         this.mapEl = null;
         this.routeControlEl = null;
+        this.categoryControlEl = null;
         this.markerLayer = null;
         this.routeLayers.clear();
+        this.markers.clear();
     }
 
     // ── UI ───────────────────────────────────────────────────────────────────
@@ -109,10 +119,56 @@ export class MapView extends ItemView {
 
         this.markerLayer = L.layerGroup().addTo(map);
         this.addLegendControl(map, this.plugin.settings.colors);
+        this.addCategoryControl(map);
         this.addRouteControl(map);
         this.leafletMap = map;
 
+        map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapRightClick(e));
+
         this.refreshMap();
+    }
+
+    // ── F1: Ort per Rechtsklick anlegen ────────────────────────────────────────
+
+    private onMapRightClick(e: L.LeafletMouseEvent) {
+        if (!this.activeVacation) {
+            new Notice("Erst einen Trip im Dropdown wählen.");
+            return;
+        }
+        const lat = roundCoord(e.latlng.lat);
+        const lng = roundCoord(e.latlng.lng);
+        new CreatePlaceModal(this.app, lat, lng, async (name, opts) => {
+            await this.createPlaceFile(name, lat, lng, opts);
+        }).open();
+    }
+
+    private async createPlaceFile(
+        name: string,
+        lat: number,
+        lng: number,
+        opts: { category?: string; priority?: number },
+    ) {
+        const { keys } = this.plugin.settings;
+        const safeName = name.replace(/[\\/:*?"<>|]/g, "").trim();
+        if (!safeName) {
+            new Notice("Ungültiger Name.");
+            return;
+        }
+        const path = `${this.activeVacation}/${safeName}.md`;
+        if (this.app.vault.getAbstractFileByPath(path)) {
+            new Notice(`„${safeName}" existiert bereits.`);
+            return;
+        }
+        const content = buildPlaceFileContent(keys, lat, lng, opts);
+        try {
+            const created = await this.app.vault.create(path, content);
+            new Notice(`Ort „${safeName}" angelegt.`);
+            if (this.plugin.settings.openNewPlace && created instanceof TFile) {
+                await this.app.workspace.getLeaf().openFile(created);
+            }
+        } catch (err) {
+            new Notice(`Anlegen fehlgeschlagen: ${err}`);
+        }
     }
 
     private addLegendControl(map: L.Map, colors: PriorityColors) {
@@ -145,53 +201,102 @@ export class MapView extends ItemView {
         new RouteControl({ position: "topright" }).addTo(map);
     }
 
+    private addCategoryControl(map: L.Map) {
+        const self = this;
+        const CategoryControl = L.Control.extend({
+            onAdd() {
+                const div = L.DomUtil.create("div", "tm-category-control leaflet-bar");
+                L.DomEvent.disableClickPropagation(div);
+                self.categoryControlEl = div;
+                return div;
+            },
+        });
+        new CategoryControl({ position: "topright" }).addTo(map);
+    }
+
+    // ── Daten laden ────────────────────────────────────────────────────────────
+
     private refreshMap() {
         if (!this.leafletMap || !this.markerLayer) return;
 
-        this.markerLayer.clearLayers();
         for (const { line } of this.routeLayers.values()) line.remove();
         this.routeLayers.clear();
 
         if (!this.activeVacation) {
+            this.places = [];
+            this.routes = [];
+            this.markerLayer.clearLayers();
+            this.markers.clear();
+            this.renderCategoryControl();
             this.renderRouteControl();
             return;
         }
 
         const { keys } = this.plugin.settings;
         const files = getVacationFiles(this.app, this.activeVacation);
-        const places = getPlaces(this.app, files, keys);
-        const routes = getRoutes(this.app, files, keys);
+        this.places = getPlaces(this.app, files, keys);
+        this.routes = getRoutes(this.app, files, keys);
 
-        const bounds: [number, number][] = [];
-
-        for (const place of places) {
-            this.addMarker(place);
-            bounds.push([place.lat, place.lng]);
+        // Kategorien-State mit den real vorhandenen Kategorien synchronisieren.
+        // Neue Kategorien sind per Default sichtbar.
+        const present = new Set(this.places.map(p => p.category ?? UNCATEGORIZED));
+        for (const c of present) {
+            if (!this.activeCategories.has(c)) this.activeCategories.add(c);
+        }
+        for (const c of [...this.activeCategories]) {
+            if (!present.has(c)) this.activeCategories.delete(c);
         }
 
-        for (const route of routes) {
-            this.addRoute(route, places);
+        this.renderMarkers();
+        this.fitToPlaces();
+
+        for (const route of this.routes) {
+            this.addRoute(route, this.places);
         }
 
+        this.renderCategoryControl();
+        this.renderRouteControl();
+    }
+
+    private fitToPlaces() {
+        if (!this.leafletMap) return;
+        const bounds = this.places.map(p => [p.lat, p.lng] as [number, number]);
         if (bounds.length === 1) {
             this.leafletMap.setView(bounds[0], 12);
         } else if (bounds.length > 1) {
             this.leafletMap.fitBounds(bounds, { padding: [40, 40] });
         }
+    }
 
-        this.renderRouteControl();
+    // ── Marker rendern (respektiert Kategorie-Filter) ──────────────────────────
+
+    private renderMarkers() {
+        if (!this.markerLayer) return;
+        this.markerLayer.clearLayers();
+        this.markers.clear();
+        for (const place of this.places) {
+            const cat = place.category ?? UNCATEGORIZED;
+            if (!this.activeCategories.has(cat)) continue;
+            this.addMarker(place);
+        }
     }
 
     private addMarker(place: Place) {
         if (!this.markerLayer || !this.leafletMap) return;
 
         const farbe = priorityColor(place.priority, this.plugin.settings.colors);
-        const size = prioritySize(place.priority);
+        const emoji = categoryIcon(place.category, this.plugin.settings.categoryIcons);
+        // Mit Emoji braucht der Pin etwas mehr Fläche, damit das Icon lesbar bleibt.
+        const size = emoji ? Math.max(prioritySize(place.priority), 20) : prioritySize(place.priority);
         const half = size / 2;
+
+        const inner = emoji
+            ? `<div class="tm-pin-inner" style="background:${farbe};width:${size}px;height:${size}px"><span class="tm-pin-icon" style="font-size:${Math.round(size * 0.62)}px">${emoji}</span></div>`
+            : `<div class="tm-pin-inner" style="background:${farbe};width:${size}px;height:${size}px"></div>`;
 
         const icon = L.divIcon({
             className: "tm-pin",
-            html: `<div class="tm-pin-inner" style="background:${farbe};width:${size}px;height:${size}px"></div>`,
+            html: inner,
             iconSize: [size, size],
             iconAnchor: [half, half],
             popupAnchor: [0, -half - 2],
@@ -223,9 +328,66 @@ export class MapView extends ItemView {
         openBtn.onclick = () => this.app.workspace.getLeaf().openFile(place.file);
         popupDiv.appendChild(openBtn);
 
-        L.marker([place.lat, place.lng], { icon })
+        const marker = L.marker([place.lat, place.lng], { icon, draggable: true })
             .bindPopup(popupDiv)
             .addTo(this.markerLayer);
+
+        // F2: Drag schreibt die neuen Koordinaten ins Frontmatter zurück.
+        marker.on("dragend", () => this.persistMarkerPosition(place.file, marker));
+
+        this.markers.set(place.file.basename, marker);
+    }
+
+    private async persistMarkerPosition(file: TFile, marker: L.Marker) {
+        const { lat, lng } = marker.getLatLng();
+        try {
+            await this.app.fileManager.processFrontMatter(file, (fm) => {
+                fm["lat"] = roundCoord(lat);
+                fm["lng"] = roundCoord(lng);
+            });
+        } catch (err) {
+            new Notice(`Position speichern fehlgeschlagen: ${err}`);
+        }
+    }
+
+    private renderCategoryControl() {
+        if (!this.categoryControlEl) return;
+        this.categoryControlEl.empty();
+
+        const categories = getCategories(this.places);
+        const hasUncategorized = this.places.some(p => !p.category);
+        const rows = [...categories];
+        if (hasUncategorized) rows.push(UNCATEGORIZED);
+
+        if (rows.length <= 1) return; // Filter erst ab 2 Gruppen sinnvoll
+
+        const header = document.createElement("div");
+        header.className = "tm-rc-header";
+        header.textContent = "Categories";
+        this.categoryControlEl.appendChild(header);
+
+        for (const cat of rows) {
+            const row = document.createElement("label");
+            row.className = "tm-rc-row";
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = this.activeCategories.has(cat);
+            cb.addEventListener("change", () => {
+                if (cb.checked) this.activeCategories.add(cat);
+                else this.activeCategories.delete(cat);
+                row.classList.toggle("tm-rc-row--off", !cb.checked);
+                this.renderMarkers();
+            });
+
+            const emoji = cat === UNCATEGORIZED ? "" : categoryIcon(cat, this.plugin.settings.categoryIcons);
+            const nameEl = document.createElement("span");
+            nameEl.textContent = emoji ? `${emoji} ${cat}` : cat;
+
+            row.appendChild(cb);
+            row.appendChild(nameEl);
+            this.categoryControlEl.appendChild(row);
+        }
     }
 
     private addRoute(route: Route, places: Place[]) {

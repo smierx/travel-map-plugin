@@ -601,6 +601,33 @@ svg.leaflet-image-layer.leaflet-interactive path {
     accent-color: #4a86cf;
 }
 
+/* ── Kategorie-Control (oben rechts, unter dem Routen-Control) ────────── */
+
+.tm-category-control {
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+    min-width: 140px;
+    overflow: hidden;
+    font-family: inherit;
+    margin-bottom: 8px;
+}
+
+/* ── New-Place-Modal ─────────────────────────────────────────────────── */
+
+.tm-modal-coords {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+}
+
+.tm-icons-textarea {
+    width: 100%;
+    font-family: var(--font-monospace);
+    resize: vertical;
+}
+
 /* Marker */
 .tm-pin {
     background: transparent !important;
@@ -619,6 +646,16 @@ svg.leaflet-image-layer.leaflet-interactive path {
 
 .tm-pin-inner:hover {
     transform: scale(1.3);
+}
+
+.tm-pin-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    line-height: 1;
+    filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
 }
 
 /* ── Prioritäts-Legende (unten links auf der Karte) ──────────────────── */
