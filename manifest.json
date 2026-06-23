@@ -1,7 +1,7 @@
 {
     "id": "travel-map",
     "name": "Travel Map",
-    "version": "0.1.0",
+    "version": "0.4.0",
     "minAppVersion": "1.7.2",
     "description": "Visual trip planning with an interactive map. Location files with coordinates appear as priority-colored pins; route files draw polylines between them.",
     "author": "smierx",
