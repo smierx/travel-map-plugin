@@ -49,7 +49,9 @@ export function getPlaces(
             : PRIORITY_DEFAULT;
         const rawDay = fm[keys.dayField];
         const day = typeof rawDay === "number" ? Math.round(rawDay) : undefined;
-        places.push({ file, lat, lng, category: fm[keys.categoryField] as string | undefined, priority, day });
+        const rawCat = fm[keys.categoryField];
+        const category = typeof rawCat === "string" ? rawCat : undefined;
+        places.push({ file, lat, lng, category, priority, day });
     }
     return places;
 }
@@ -63,8 +65,13 @@ export function getRoutes(
     for (const file of files) {
         const fm = getFrontmatter(app, file);
         if (!fm || fm[keys.typeField] !== keys.routeValue) continue;
-        const locations = Array.isArray(fm[keys.locationsField]) ? (fm[keys.locationsField] as string[]) : [];
-        routes.push({ file, color: (fm[keys.colorField] as string) ?? "#3388ff", locations });
+        const rawLocations = fm[keys.locationsField];
+        const locations = Array.isArray(rawLocations)
+            ? rawLocations.filter((x): x is string => typeof x === "string")
+            : [];
+        const rawColor = fm[keys.colorField];
+        const color = typeof rawColor === "string" ? rawColor : "#3388ff";
+        routes.push({ file, color, locations });
     }
     return routes;
 }
@@ -106,6 +113,17 @@ export function sortPlacesByPriority(places: Place[]): Place[] {
         if (b.priority !== a.priority) return b.priority - a.priority;
         return a.file.basename.localeCompare(b.file.basename);
     });
+}
+
+// Gleicht eine aktive Filtermenge an die tatsächlich vorhandenen Werte an:
+// neue Werte werden sichtbar (hinzugefügt), verschwundene entfernt. Mutiert `active`.
+export function syncFilter(present: Set<string>, active: Set<string>): void {
+    for (const v of present) {
+        if (!active.has(v)) active.add(v);
+    }
+    for (const v of [...active]) {
+        if (!present.has(v)) active.delete(v);
+    }
 }
 
 // Distinkte, alphabetisch sortierte Kategorien aller Orte.

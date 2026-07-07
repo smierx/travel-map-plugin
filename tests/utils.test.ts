@@ -16,6 +16,7 @@ import {
     formatDistance,
     sortPlacesByPriority,
     getDays,
+    syncFilter,
 } from "../src/utils";
 import { buildOsrmUrl, decodeOsrmGeometry, routeSignature } from "../src/routing";
 import { priorityColor, prioritySize, categoryIcon, DEFAULT_FRONTMATTER_KEYS } from "../src/types";
@@ -418,6 +419,38 @@ describe("roundCoord", () => {
 });
 
 // ── getCategories ─────────────────────────────────────────────────────────────
+
+describe("syncFilter", () => {
+    it("adds newly present values so they start visible", () => {
+        const active = new Set<string>();
+        syncFilter(new Set(["city", "food"]), active);
+        expect([...active].sort()).toEqual(["city", "food"]);
+    });
+
+    it("removes values that are no longer present", () => {
+        const active = new Set(["city", "food"]);
+        syncFilter(new Set(["city"]), active);
+        expect([...active]).toEqual(["city"]);
+    });
+
+    it("keeps existing values that are still present and adds new ones", () => {
+        const active = new Set(["city"]);
+        syncFilter(new Set(["city", "beach"]), active);
+        expect([...active].sort()).toEqual(["beach", "city"]);
+    });
+
+    it("clears everything when nothing is present", () => {
+        const active = new Set(["city", "food"]);
+        syncFilter(new Set<string>(), active);
+        expect(active.size).toBe(0);
+    });
+
+    it("is a no-op when present and active already match", () => {
+        const active = new Set(["a", "b"]);
+        syncFilter(new Set(["a", "b"]), active);
+        expect([...active].sort()).toEqual(["a", "b"]);
+    });
+});
 
 describe("getCategories", () => {
     const mk = (category?: string): Place => ({

@@ -175,6 +175,8 @@ Each route is drawn with **numbered waypoints** in route order and shows its **t
 
 By default routes are straight lines (fully offline). Enable **Settings → Travel Map → Real road routing** to draw them along actual roads via the public [OSRM](https://project-osrm.org) service. This sends the route's coordinates to an external server, so it is off by default. On any network error the route falls back to the straight line. Responses are cached per route, so toggling files does not refetch.
 
+> **Note:** this uses the free public OSRM demo server (`router.project-osrm.org`), which is intended for light/testing use only and offers no uptime guarantee. For heavy or reliable routing, host your own OSRM instance.
+
 ### Map controls
 
 | Control | Position | Function |

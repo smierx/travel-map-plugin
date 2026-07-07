@@ -22,10 +22,6 @@ export default class TravelMapPlugin extends Plugin {
         this.addSettingTab(new SettingsTab(this.app, this));
     }
 
-    async onunload() {
-        this.app.workspace.detachLeavesOfType(TRAVEL_MAP_VIEW_TYPE);
-    }
-
     async loadSettings() {
         const saved = await this.loadData();
         this.settings = {

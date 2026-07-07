@@ -2,7 +2,7 @@ import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import * as L from "leaflet";
 import TravelMapPlugin from "../main";
 import { Place, Route, PriorityColors, priorityColor, prioritySize, buildLegend, categoryIcon } from "./types";
-import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, getDays, roundCoord, buildPlaceFileContent, routeDistanceKm, formatDistance, sortPlacesByPriority } from "./utils";
+import { getVacations, getVacationFiles, getPlaces, getRoutes, resolveRouteCoords, getCategories, getDays, roundCoord, buildPlaceFileContent, routeDistanceKm, formatDistance, sortPlacesByPriority, syncFilter } from "./utils";
 import { CreatePlaceModal } from "./CreatePlaceModal";
 import { fetchRoute, routeSignature } from "./routing";
 
@@ -12,6 +12,7 @@ const UNCATEGORIZED = "(no category)";
 const NODAY = "(no day)";
 
 interface RouteEntry {
+    name: string;
     group: L.LayerGroup;
     line: L.Polyline;
     visible: boolean;
@@ -50,7 +51,13 @@ export class MapView extends ItemView {
         this.activeVacation = this.plugin.settings.activeVacation;
         this.buildUI();
         this.registerEvent(
-            this.app.metadataCache.on("changed", () => this.refreshMap())
+            this.app.metadataCache.on("changed", (file) => {
+                // Nur neu aufbauen, wenn die geänderte Datei zum aktiven Trip gehört.
+                // Sonst würde jedes Speichern irgendwo im Vault die Karte neu rendern.
+                if (this.activeVacation && file.path.startsWith(`${this.activeVacation}/`)) {
+                    this.refreshMap();
+                }
+            })
         );
     }
 
@@ -89,7 +96,8 @@ export class MapView extends ItemView {
 
         this.mapEl = containerEl.createDiv("tm-map");
 
-        setTimeout(() => this.initLeaflet(), 50);
+        // Warten bis der Pane ein echtes Layout hat, sonst rendert Leaflet in Nullgröße.
+        requestAnimationFrame(() => this.initLeaflet());
     }
 
     private buildToolbar(parent: HTMLElement) {
@@ -138,6 +146,10 @@ export class MapView extends ItemView {
         this.leafletMap = map;
 
         map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapRightClick(e));
+
+        // Nach dem nächsten Frame die Größe neu berechnen, falls der Pane erst
+        // jetzt seine endgültigen Maße bekommen hat (z.B. beim Öffnen im Sidebar).
+        requestAnimationFrame(() => map.invalidateSize());
 
         this.refreshMap();
     }
@@ -272,8 +284,8 @@ export class MapView extends ItemView {
 
         // Filter-State mit den real vorhandenen Werten abgleichen.
         // Neue Werte sind per Default sichtbar, verschwundene werden entfernt.
-        this.syncFilter(new Set(this.places.map(p => p.category ?? UNCATEGORIZED)), this.activeCategories);
-        this.syncFilter(new Set(this.places.map(p => this.dayKey(p))), this.activeDays);
+        syncFilter(new Set(this.places.map(p => p.category ?? UNCATEGORIZED)), this.activeCategories);
+        syncFilter(new Set(this.places.map(p => this.dayKey(p))), this.activeDays);
 
         this.renderMarkers();
         this.fitToPlaces();
@@ -286,16 +298,6 @@ export class MapView extends ItemView {
         this.renderDayControl();
         this.renderRouteControl();
         this.renderPlaceList();
-    }
-
-    // Aktive Filtermenge an die tatsächlich vorhandenen Werte angleichen.
-    private syncFilter(present: Set<string>, active: Set<string>) {
-        for (const v of present) {
-            if (!active.has(v)) active.add(v);
-        }
-        for (const v of [...active]) {
-            if (!present.has(v)) active.delete(v);
-        }
     }
 
     private fitToPlaces() {
@@ -376,7 +378,7 @@ export class MapView extends ItemView {
         // F2: Drag schreibt die neuen Koordinaten ins Frontmatter zurück.
         marker.on("dragend", () => this.persistMarkerPosition(place.file, marker));
 
-        this.markers.set(place.file.basename, marker);
+        this.markers.set(place.file.path, marker);
     }
 
     private async persistMarkerPosition(file: TFile, marker: L.Marker) {
@@ -497,22 +499,23 @@ export class MapView extends ItemView {
         group.addTo(this.leafletMap);
 
         const entry: RouteEntry = {
+            name: route.file.basename,
             group,
             line,
             visible: true,
             color: route.color,
             distanceKm: routeDistanceKm(coords),
         };
-        this.routeLayers.set(route.file.basename, entry);
+        this.routeLayers.set(route.file.path, entry);
 
         // F8: optional die Linie an echte Straßen anpassen (Wegpunkte/Nummern bleiben).
         if (this.plugin.settings.realRouting) {
-            void this.applyRealRouting(route.file.basename, coords, entry);
+            void this.applyRealRouting(route.file.path, coords, entry);
         }
     }
 
     private async applyRealRouting(
-        name: string,
+        key: string,
         coords: [number, number][],
         entry: RouteEntry,
     ) {
@@ -523,7 +526,7 @@ export class MapView extends ItemView {
         if (!cached) this.routeCache.set(sig, road);
 
         // Nur anwenden, wenn die Route noch aktuell ist (Trip nicht gewechselt).
-        if (this.routeLayers.get(name) !== entry) return;
+        if (this.routeLayers.get(key) !== entry) return;
 
         entry.line.setLatLngs(road);
         entry.distanceKm = routeDistanceKm(road);
@@ -541,7 +544,7 @@ export class MapView extends ItemView {
         header.textContent = "Routes";
         this.routeControlEl.appendChild(header);
 
-        for (const [name, entry] of this.routeLayers) {
+        for (const entry of this.routeLayers.values()) {
             const row = document.createElement("label");
             row.className = "tm-rc-row";
 
@@ -562,7 +565,7 @@ export class MapView extends ItemView {
 
             const nameEl = document.createElement("span");
             nameEl.className = "tm-rc-name";
-            nameEl.textContent = name;
+            nameEl.textContent = entry.name;
 
             const distEl = document.createElement("span");
             distEl.className = "tm-rc-dist";
@@ -630,7 +633,7 @@ export class MapView extends ItemView {
     private flyToPlace(place: Place) {
         if (!this.leafletMap) return;
         this.leafletMap.setView([place.lat, place.lng], 13);
-        const marker = this.markers.get(place.file.basename);
+        const marker = this.markers.get(place.file.path);
         if (marker) marker.openPopup();
     }
 }
