@@ -35,12 +35,12 @@ An [Obsidian](https://obsidian.md) plugin for visual trip planning. Locations li
 ### BRAT (beta)
 
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
-2. **BRAT → Add Beta Plugin** → paste `https://github.com/smierx/obsidian-travel-map`
+2. **BRAT → Add Beta Plugin** → paste `https://github.com/smierx/travel-map-plugin`
 3. Enable **Travel Map** under Community Plugins
 
 ### Manual
 
-1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/smierx/obsidian-travel-map/releases/latest)
+1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/smierx/travel-map-plugin/releases/latest)
 2. Copy the files into your vault:
    ```
    <vault>/.obsidian/plugins/travel-map/
@@ -203,8 +203,8 @@ Right-click the map to **create a place**, drag a pin to **move it**, and click 
 ### Setup
 
 ```bash
-git clone https://github.com/smierx/obsidian-travel-map
-cd obsidian-travel-map
+git clone https://github.com/smierx/travel-map-plugin
+cd travel-map-plugin
 npm install
 ```
 
